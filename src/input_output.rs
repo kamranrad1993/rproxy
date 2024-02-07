@@ -1,15 +1,10 @@
 #[allow(non_snake_case, unused_variables, dead_code)]
 
 pub mod pipeline {
-    use async_trait::async_trait;
     use std::{
         io::{self, Read, Write},
         string::ParseError,
-        collections::HashMap
     };
-
-    use super::destination::WebsocketDestination;
-    use crate::source::WebsocketSource;
 
     #[derive(Debug)]
     pub enum IOError {
@@ -18,38 +13,55 @@ pub mod pipeline {
         UnknownError(String),
         IoError(io::Error),
         ParseError(ParseError),
+        InvalidStep(String),
     }
 
-    pub enum SourceProtocols{
-        Websocket(WebsocketSource),
+    pub enum PipelineStepType {
+        Source,
+        Middle,
+        Destination,
     }
 
-    pub enum DestinationProtocols{
-        Websocket(WebsocketDestination),
+    impl PartialEq for PipelineStepType {
+        fn eq(&self, other: &Self) -> bool {
+            core::mem::discriminant(self) == core::mem::discriminant(other)
+        }
     }
 
-
-
-
-    pub trait ProtocolName {
-        const VALUE: &'static str;
-        fn get_protocol() -> &'static str;
+    pub trait PipelineStep: Read + Write + 'static {
+        fn get_step_type(&self) -> PipelineStepType;
     }
 
-    #[async_trait]
-    pub trait PipelineStep: ProtocolName + Read + Write {
-        fn new(address: &str) -> Self;
-        fn validate_address(address: String) -> Result<String, IOError>;
+    pub struct Pipeline {
+        steps: Vec<Box<dyn PipelineStep>>,
     }
 
-    pub struct Pipeline<T: PipelineStep> {
-        source: T,
-        destination: T,
-    }
+    impl Pipeline {
+        pub fn new(steps: Vec<Box<dyn PipelineStep>>) -> Result<Self, IOError> {
+            if steps.len() < 2 {
+                Err(IOError::InvalidStep(format!(
+                    "Step count mus greater tha two."
+                )))
+            } else if steps.first().unwrap().get_step_type() != PipelineStepType::Source {
+                Err(IOError::InvalidStep(format!(
+                    "First step typemust be PipelineStepType::Source."
+                )))
+            } else if steps.last().unwrap().get_step_type() != PipelineStepType::Destination {
+                Err(IOError::InvalidStep(format!(
+                    "last step typemust be PipelineStepType::Destination."
+                )))
+            } else {
+                Ok(Pipeline { steps })
+            }
+        }
 
-    impl<T: PipelineStep> Pipeline<T> {
-        pub fn new(source: String, destination: String) -> Pipeline<T> {
-            
+        pub fn run(&mut self) -> Result<(), IOError> {
+            let mut data: Vec<u8> = vec![0; 1024];
+            for i in 0..self.steps.len() - 2 {
+                self.steps[i].read(data.as_mut_slice()).unwrap();
+                self.steps[i + 1].write(data.as_mut_slice()).unwrap();
+            }
+            Ok(())
         }
     }
 }
@@ -57,26 +69,17 @@ pub mod pipeline {
 pub mod middle_ware {}
 
 pub mod source {
-    use super::pipeline::{IOError, PipelineStep, ProtocolName};
+    use super::pipeline::{ PipelineStep, PipelineStepType};
     use std::{
         io::{Read, Write},
         net::{TcpListener, TcpStream},
         os::fd::AsRawFd,
-        string::ParseError,
     };
     use tungstenite::{accept, protocol::Role, Message, WebSocket};
 
     pub(crate) struct WebsocketSource {
         _tcp_server: TcpListener,
         tcp_stream: TcpStream,
-    }
-
-    impl ProtocolName for WebsocketSource {
-        const VALUE: &'static str = "ws";
-
-        fn get_protocol() -> &'static str {
-            WebsocketSource::VALUE
-        }
     }
 
     impl Write for WebsocketSource {
@@ -109,6 +112,12 @@ pub mod source {
     }
 
     impl PipelineStep for WebsocketSource {
+        fn get_step_type(&self) -> PipelineStepType {
+            PipelineStepType::Source
+        }
+    }
+
+    impl WebsocketSource {
         fn new(address: &str) -> Self {
             let server = TcpListener::bind(address).unwrap();
             let r = server.accept().unwrap().0;
@@ -119,20 +128,6 @@ pub mod source {
             }
         }
 
-        fn validate_address(address: String) -> Result<String, IOError> {
-            let parsed_address: Vec<&str> = address.split(':').collect();
-            if parsed_address[0] == WebsocketSource::get_protocol() {
-                Ok(String::from(parsed_address[0]))
-            } else {
-                Err(IOError::UnknownError(format!(
-                    "Failed to parse '{}' as protocol.",
-                    parsed_address[0]
-                )))
-            }
-        }
-    }
-
-    impl WebsocketSource {
         pub fn get_websocket(&self) -> WebSocket<TcpStream> {
             WebSocket::from_raw_socket(self.tcp_stream.try_clone().unwrap(), Role::Server, None)
         }
@@ -141,48 +136,22 @@ pub mod source {
 
 pub mod destination {
     use std::io::{Read, Write};
-    use std::net::{TcpStream, ToSocketAddrs};
+    use std::net::TcpStream;
     use std::os::fd::AsRawFd;
     use tungstenite::client::client_with_config;
     use tungstenite::handshake::client::Request;
     use tungstenite::protocol::Role;
     use tungstenite::{Message, WebSocket};
 
-    use super::pipeline::{IOError, PipelineStep, ProtocolName};
+    use super::pipeline::{PipelineStep, PipelineStepType};
 
     pub(crate) struct WebsocketDestination {
         tcp_stream: TcpStream,
     }
 
-    impl ProtocolName for WebsocketDestination {
-        const VALUE: &'static str = "ws";
-
-        fn get_protocol() -> &'static str {
-            WebsocketDestination::VALUE
-        }
-    }
-
     impl PipelineStep for WebsocketDestination {
-        fn new(address: &str) -> Self {
-            let connection = TcpStream::connect(address).unwrap();
-            let req = Request::builder().uri(address).body(()).unwrap();
-            let l = client_with_config(req, connection.try_clone().unwrap(), None).unwrap();
-            //handle errors
-            WebsocketDestination {
-                tcp_stream: connection,
-            }
-        }
-
-        fn validate_address(address: String) -> Result<String, IOError> {
-            let parsed_address: Vec<&str> = address.split(':').collect();
-            if parsed_address[0] == WebsocketDestination::get_protocol() {
-                Ok(String::from(parsed_address[0]))
-            } else {
-                Err(IOError::UnknownError(format!(
-                    "Failed to parse '{}' as protocol.",
-                    parsed_address[0]
-                )))
-            }
+        fn get_step_type(&self) -> PipelineStepType {
+            PipelineStepType::Destination
         }
     }
 
@@ -216,6 +185,16 @@ pub mod destination {
     }
 
     impl WebsocketDestination {
+        fn new(address: &str) -> Self {
+            let connection = TcpStream::connect(address).unwrap();
+            let req = Request::builder().uri(address).body(()).unwrap();
+            let l = client_with_config(req, connection.try_clone().unwrap(), None).unwrap();
+            //handle errors
+            WebsocketDestination {
+                tcp_stream: connection,
+            }
+        }
+
         pub fn get_websocket(&self) -> WebSocket<TcpStream> {
             WebSocket::from_raw_socket(self.tcp_stream.try_clone().unwrap(), Role::Client, None)
         }
