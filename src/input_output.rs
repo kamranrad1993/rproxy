@@ -1,6 +1,17 @@
 #[allow(non_snake_case, unused_variables, dead_code)]
 
+pub mod cmd {
+    use clap::Command;
+    pub enum Error {
+        Err(String),
+    }
+    pub trait Cmd {
+        fn get_cmd(&self, command: Command) -> Result<Command, Error>;
+    }
+}
+
 pub mod pipeline {
+    use crate::cmd::Cmd;
     use std::{
         io::{self, Read, Write},
         string::ParseError,
@@ -28,7 +39,7 @@ pub mod pipeline {
         }
     }
 
-    pub trait PipelineStep: Read + Write + 'static {
+    pub trait PipelineStep: Read + Write + Cmd {
         fn get_step_type(&self) -> PipelineStepType;
     }
 
@@ -40,15 +51,15 @@ pub mod pipeline {
         pub fn new(steps: Vec<Box<dyn PipelineStep>>) -> Result<Self, IOError> {
             if steps.len() < 2 {
                 Err(IOError::InvalidStep(format!(
-                    "Step count mus greater tha two."
+                    "Step count must greater than two."
                 )))
             } else if steps.first().unwrap().get_step_type() != PipelineStepType::Source {
                 Err(IOError::InvalidStep(format!(
-                    "First step typemust be PipelineStepType::Source."
+                    "First step type must be PipelineStepType::Source."
                 )))
             } else if steps.last().unwrap().get_step_type() != PipelineStepType::Destination {
                 Err(IOError::InvalidStep(format!(
-                    "last step typemust be PipelineStepType::Destination."
+                    "Last step type must be PipelineStepType::Destination."
                 )))
             } else {
                 Ok(Pipeline { steps })
@@ -69,7 +80,9 @@ pub mod pipeline {
 pub mod middle_ware {}
 
 pub mod source {
-    use super::pipeline::{ PipelineStep, PipelineStepType};
+    use super::pipeline::{PipelineStep, PipelineStepType};
+    use crate::cmd::{self, Cmd, Error};
+    use clap::Command;
     use std::{
         io::{Read, Write},
         net::{TcpListener, TcpStream},
@@ -111,6 +124,12 @@ pub mod source {
         }
     }
 
+    impl Cmd for WebsocketSource {
+        fn get_cmd(&self, command: clap::Command) -> Result<Command, Error> {
+            todo!()
+        }
+    }
+
     impl PipelineStep for WebsocketSource {
         fn get_step_type(&self) -> PipelineStepType {
             PipelineStepType::Source
@@ -135,6 +154,7 @@ pub mod source {
 }
 
 pub mod destination {
+    use clap::Command;
     use std::io::{Read, Write};
     use std::net::TcpStream;
     use std::os::fd::AsRawFd;
@@ -142,6 +162,8 @@ pub mod destination {
     use tungstenite::handshake::client::Request;
     use tungstenite::protocol::Role;
     use tungstenite::{Message, WebSocket};
+
+    use crate::cmd::{Cmd, Error};
 
     use super::pipeline::{PipelineStep, PipelineStepType};
 
@@ -181,6 +203,12 @@ pub mod destination {
         fn flush(&mut self) -> std::io::Result<()> {
             self.get_websocket().flush().unwrap();
             Ok(())
+        }
+    }
+
+    impl Cmd for WebsocketDestination {
+        fn get_cmd(&self, command: clap::Command) -> Result<Command, Error> {
+            todo!()
         }
     }
 
