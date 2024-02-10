@@ -1,68 +1,26 @@
+use clap::{command, ArgMatches, Command};
 #[allow(unused_imports)]
-use proxy::source;
-use clap::{command, value_parser, Arg, ArgAction, ArgMatches, Command};
+use proxy::{cmd::Cmd, Pipeline, PipelineStep, STDioStep, WebsocketDestination, WebsocketSource};
 
+// #[derive(EnumIter)]
+// enum Steps {
+//     StdioStep(STDioStep),
+//     WebsocketSource(WebsocketSource),
+//     WebsocketDestination(WebsocketDestination),
+// }
+
+// enum StepsCmd{
+//     StdioStep(STDioStep::get_cmd())
+// }
 
 fn make_cmd() -> ArgMatches {
-    let matches = command!()
-        .arg_required_else_help(true)
-        .subcommand_required(true)
-        .subcommand(
-            Command::new("server")
-                .about("run in server mode")
-                .arg(
-                    Arg::new("redis server address")
-                        .short('r')
-                        .long("redis_addr")
-                        .action(ArgAction::Append)
-                        .required(true),
-                )
-                .arg(
-                    Arg::new("redis server port")
-                        .short('p')
-                        .long("redis_port")
-                        .action(ArgAction::Append)
-                        .required(true)
-                        .value_parser(value_parser!(u16)),
-                )
-                .arg(
-                    Arg::new("listen port")
-                        .short('l')
-                        .long("listen_port")
-                        .action(ArgAction::Append)
-                        .required(true)
-                        .value_parser(value_parser!(u16)),
-                ), // .arg(arg!([NAME]))
-        )
-        .subcommand(
-            Command::new("client")
-                .about("run in client mode")
-                .arg(
-                    Arg::new("server address")
-                        .short('a')
-                        .long("server_addr")
-                        .action(ArgAction::Append)
-                        .required(true),
-                )
-                .arg(
-                    Arg::new("server port")
-                        .short('p')
-                        .long("server_port")
-                        .action(ArgAction::Append)
-                        .required(true)
-                        .value_parser(value_parser!(u16)),
-                )
-                .arg(
-                    Arg::new("unique identity")
-                        .short('i')
-                        .long("identity")
-                        .action(ArgAction::Append)
-                        .required(true)
-                        .value_parser(value_parser!(u16)),
-                ), // .arg(arg!([NAME]))
-        )
-        .get_matches();
-    matches
+    let mut commands: Command = command!();
+    commands = Pipeline::<PipelineStep>::get_cmd(commands).unwrap();
+    commands = STDioStep::get_cmd(commands).unwrap();
+    commands = WebsocketSource::get_cmd(commands).unwrap();
+    commands = WebsocketDestination::get_cmd(commands).unwrap();
+
+    return commands.get_matches();
 }
 
 fn main() {

@@ -1,88 +1,9 @@
 #[allow(non_snake_case, unused_variables, dead_code)]
-
-pub mod cmd {
-    use clap::Command;
-    pub enum Error {
-        Err(String),
-    }
-    pub trait Cmd {
-        fn get_cmd(&self, command: Command) -> Result<Command, Error>;
-    }
-}
-
-pub mod pipeline {
-    use crate::cmd::Cmd;
-    use std::{
-        io::{self, Read, Write},
-        string::ParseError,
-    };
-
-    #[derive(Debug)]
-    pub enum IOError {
-        InvalidConnection,
-        InvalidBindAddress,
-        UnknownError(String),
-        IoError(io::Error),
-        ParseError(ParseError),
-        InvalidStep(String),
-    }
-
-    pub enum PipelineStepType {
-        Source,
-        Middle,
-        Destination,
-    }
-
-    impl PartialEq for PipelineStepType {
-        fn eq(&self, other: &Self) -> bool {
-            core::mem::discriminant(self) == core::mem::discriminant(other)
-        }
-    }
-
-    pub trait PipelineStep: Read + Write + Cmd {
-        fn get_step_type(&self) -> PipelineStepType;
-    }
-
-    pub struct Pipeline {
-        steps: Vec<Box<dyn PipelineStep>>,
-    }
-
-    impl Pipeline {
-        pub fn new(steps: Vec<Box<dyn PipelineStep>>) -> Result<Self, IOError> {
-            if steps.len() < 2 {
-                Err(IOError::InvalidStep(format!(
-                    "Step count must greater than two."
-                )))
-            } else if steps.first().unwrap().get_step_type() != PipelineStepType::Source {
-                Err(IOError::InvalidStep(format!(
-                    "First step type must be PipelineStepType::Source."
-                )))
-            } else if steps.last().unwrap().get_step_type() != PipelineStepType::Destination {
-                Err(IOError::InvalidStep(format!(
-                    "Last step type must be PipelineStepType::Destination."
-                )))
-            } else {
-                Ok(Pipeline { steps })
-            }
-        }
-
-        pub fn run(&mut self) -> Result<(), IOError> {
-            let mut data: Vec<u8> = vec![0; 1024];
-            for i in 0..self.steps.len() - 2 {
-                self.steps[i].read(data.as_mut_slice()).unwrap();
-                self.steps[i + 1].write(data.as_mut_slice()).unwrap();
-            }
-            Ok(())
-        }
-    }
-}
-
-pub mod middle_ware {}
-
-pub mod source {
-    use super::pipeline::{PipelineStep, PipelineStepType};
-    use crate::cmd::{self, Cmd, Error};
-    use clap::Command;
+pub mod ws_source {
+    use crate::cmd::{Cmd, Error};
+    use crate::pipeline_module::pipeline::{PipelineStep, PipelineStepType};
+    use clap::{Arg, ArgAction, Command};
+    use std::os::fd::FromRawFd;
     use std::{
         io::{Read, Write},
         net::{TcpListener, TcpStream},
@@ -90,7 +11,7 @@ pub mod source {
     };
     use tungstenite::{accept, protocol::Role, Message, WebSocket};
 
-    pub(crate) struct WebsocketSource {
+    pub struct WebsocketSource {
         _tcp_server: TcpListener,
         tcp_stream: TcpStream,
     }
@@ -125,8 +46,13 @@ pub mod source {
     }
 
     impl Cmd for WebsocketSource {
-        fn get_cmd(&self, command: clap::Command) -> Result<Command, Error> {
-            todo!()
+        fn get_cmd(command: clap::Command) -> Result<Command, Error> {
+            Ok(command.arg(
+                Arg::new("websocket(ws)")
+                    .long("websocket")
+                    .action(ArgAction::Append)
+                    .required(false),
+            ))
         }
     }
 
@@ -136,11 +62,20 @@ pub mod source {
         }
     }
 
+    impl Default for WebsocketSource {
+        fn default() -> Self {
+            Self {
+                _tcp_server: TcpListener::bind("127.0.0.1:0").unwrap(),
+                tcp_stream: unsafe{TcpStream::from_raw_fd(0)},
+            }
+        }
+    }
+
     impl WebsocketSource {
         fn new(address: &str) -> Self {
             let server = TcpListener::bind(address).unwrap();
             let r = server.accept().unwrap().0;
-            let websocket = accept(r.try_clone().unwrap()).unwrap();
+            accept(r.try_clone().unwrap()).unwrap();
             WebsocketSource {
                 _tcp_server: server,
                 tcp_stream: r, // websocket: websocket,
@@ -153,11 +88,12 @@ pub mod source {
     }
 }
 
-pub mod destination {
-    use clap::Command;
+#[allow(non_snake_case, unused_variables, dead_code)]
+pub mod ws_destination {
+    use clap::{Arg, ArgAction, Command};
     use std::io::{Read, Write};
     use std::net::TcpStream;
-    use std::os::fd::AsRawFd;
+    use std::os::fd::{AsRawFd, FromRawFd};
     use tungstenite::client::client_with_config;
     use tungstenite::handshake::client::Request;
     use tungstenite::protocol::Role;
@@ -165,15 +101,23 @@ pub mod destination {
 
     use crate::cmd::{Cmd, Error};
 
-    use super::pipeline::{PipelineStep, PipelineStepType};
+    use crate::pipeline_module::pipeline::{PipelineStep, PipelineStepType};
 
-    pub(crate) struct WebsocketDestination {
+    pub struct WebsocketDestination {
         tcp_stream: TcpStream,
     }
 
     impl PipelineStep for WebsocketDestination {
         fn get_step_type(&self) -> PipelineStepType {
             PipelineStepType::Destination
+        }
+    }
+
+    impl Default for WebsocketDestination {
+        fn default() -> Self {
+            Self {
+                tcp_stream: unsafe{TcpStream::from_raw_fd(0)},
+            }
         }
     }
 
@@ -207,8 +151,13 @@ pub mod destination {
     }
 
     impl Cmd for WebsocketDestination {
-        fn get_cmd(&self, command: clap::Command) -> Result<Command, Error> {
-            todo!()
+        fn get_cmd(command: clap::Command) -> Result<Command, Error> {
+            Ok(command.arg(
+                Arg::new("websocket_c(ws)")
+                    .long("websocket_c")
+                    .action(ArgAction::Append)
+                    .required(false),
+            ))
         }
     }
 
