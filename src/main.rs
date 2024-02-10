@@ -24,6 +24,6 @@ fn make_cmd() -> ArgMatches {
 }
 
 fn main() {
-    make_cmd();
+    let args = make_cmd();
     println!("Hello, world!");
 }

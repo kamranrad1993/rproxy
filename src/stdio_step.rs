@@ -22,7 +22,7 @@ pub mod io_step {
         fn get_cmd(command: clap::Command) -> Result<clap::Command, crate::cmd::Error> {
             Ok(command
                 .arg(
-                    Arg::new("websocket(ws)")
+                    Arg::new("stdio(-)")
                         .long("stdin")
                         .action(ArgAction::Append)
                         .required(false),

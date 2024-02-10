@@ -108,12 +108,7 @@ pub mod pipeline {
     impl Cmd for Pipeline
     {
         fn get_cmd(command: clap::Command) -> Result<clap::Command, crate::cmd::Error> {
-            Ok(command.arg(
-                Arg::new("pipeline")
-                    .short('p')
-                    .long("pipeline")
-                    .required(true),
-            ))
+            Ok(command)
         }
     }
 }
