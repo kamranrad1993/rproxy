@@ -43,23 +43,19 @@ pub mod pipeline {
         }
     }
 
-    pub trait PipelineStep: Read + Write + Default + Cmd {
+    pub trait PipelineStep: Read + Write {
         fn get_step_type(&self) -> PipelineStepType;
     }
 
-    pub struct Pipeline<T>
-    where
-        T: PipelineStep + Cmd
+    pub struct Pipeline
     {
-        steps: Vec<Box<T>>,
+        steps: Vec<Box<dyn PipelineStep>>,
         buffer_size: Option<usize>,
     }
 
-    impl<T> Pipeline<T>
-    where
-        T: PipelineStep + Cmd,
+    impl Pipeline
     {
-        pub fn new(steps: Vec<Box<T>>, buffer_size: Option<usize>) -> Result<Self, IOError> {
+        pub fn new(steps: Vec<Box<dyn PipelineStep>>, buffer_size: Option<usize>) -> Result<Self, IOError> {
             if steps.len() < 2 {
                 Err(IOError::InvalidStep(format!(
                     "Step count must greater than two."
@@ -109,9 +105,7 @@ pub mod pipeline {
         }
     }
 
-    impl<T> Cmd for Pipeline<T>
-    where
-        T: PipelineStep + Cmd,
+    impl Cmd for Pipeline
     {
         fn get_cmd(command: clap::Command) -> Result<clap::Command, crate::cmd::Error> {
             Ok(command.arg(

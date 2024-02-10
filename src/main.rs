@@ -15,7 +15,7 @@ use proxy::{cmd::Cmd, Pipeline, PipelineStep, STDioStep, WebsocketDestination, W
 
 fn make_cmd() -> ArgMatches {
     let mut commands: Command = command!();
-    commands = Pipeline::<PipelineStep>::get_cmd(commands).unwrap();
+    commands = Pipeline::get_cmd(commands).unwrap();
     commands = STDioStep::get_cmd(commands).unwrap();
     commands = WebsocketSource::get_cmd(commands).unwrap();
     commands = WebsocketDestination::get_cmd(commands).unwrap();
