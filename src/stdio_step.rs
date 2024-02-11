@@ -8,7 +8,7 @@ pub mod io_step {
 
     impl PipelineStep for STDioStep {
         fn get_step_type(&self) -> PipelineStepType {
-            PipelineStepType::Source
+            PipelineStepType::Source_Destination
         }
     }
 
@@ -47,6 +47,12 @@ pub mod io_step {
         fn flush(&mut self) -> std::io::Result<()> {
             let mut io = stdout();
             io.flush()
+        }
+    }
+
+    impl STDioStep {
+        pub fn new() -> STDioStep {
+            STDioStep {}
         }
     }
 }

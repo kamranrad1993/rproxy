@@ -72,7 +72,7 @@ pub mod ws_source {
     }
 
     impl WebsocketSource {
-        fn new(address: &str) -> Self {
+        pub fn new(address: &str) -> Self {
             let server = TcpListener::bind(address).unwrap();
             let r = server.accept().unwrap().0;
             accept(r.try_clone().unwrap()).unwrap();
@@ -91,10 +91,12 @@ pub mod ws_source {
 #[allow(non_snake_case, unused_variables, dead_code)]
 pub mod ws_destination {
     use clap::{Arg, ArgAction, Command};
+    use tungstenite::http::{Uri, header};
     use std::io::{Read, Write};
     use std::net::TcpStream;
     use std::os::fd::{AsRawFd, FromRawFd};
-    use tungstenite::client::client_with_config;
+    use tungstenite::client::{client_with_config, IntoClientRequest};
+    use tungstenite::client::client;
     use tungstenite::handshake::client::Request;
     use tungstenite::protocol::Role;
     use tungstenite::{Message, WebSocket};
@@ -162,10 +164,19 @@ pub mod ws_destination {
     }
 
     impl WebsocketDestination {
-        fn new(address: &str) -> Self {
-            let connection = TcpStream::connect(address).unwrap();
-            let req = Request::builder().uri(address).body(()).unwrap();
-            let l = client_with_config(req, connection.try_clone().unwrap(), None).unwrap();
+        pub fn new(address: &str) -> Self {
+            let uri: Uri = address.parse::<Uri>().unwrap();
+            let mut addr= String::from(uri.host().unwrap());
+            addr.push_str(":");
+            addr.push_str(uri.port().unwrap().as_str());
+            let connection = TcpStream::connect(addr).unwrap();
+            // let req = Request::builder().uri(address).body(()).unwrap();
+            let req = uri.into_client_request().unwrap();
+            for header in req.headers(){
+                print!("{}:{}", header.0, header.1.to_str().unwrap());  
+            }
+            // let l = client_with_config(req, connection.try_clone().unwrap(), None).unwrap();
+            let l = client(req, connection.try_clone().unwrap()).unwrap();
             //handle errors
             WebsocketDestination {
                 tcp_stream: connection,

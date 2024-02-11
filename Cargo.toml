@@ -13,3 +13,5 @@ tungstenite = "0.21.0"
 clap = { version = "4.5.0", features = ["cargo", "derive", ] }
 async-std = "1.12.0"
 strum = { version = "0.26.1", features = ["std", "derive", "strum_macros", "phf"] }
+# bitflags = { version = "2.4.2", features = ["arbitrary", "std", "core", "compiler_builtins", ] }
+bitflags = { version = "2.4.2", features = [ "arbitrary", "compiler_builtins", "core" ] }
