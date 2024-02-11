@@ -62,15 +62,6 @@ pub mod ws_source {
         }
     }
 
-    impl Default for WebsocketSource {
-        fn default() -> Self {
-            Self {
-                _tcp_server: TcpListener::bind("127.0.0.1:0").unwrap(),
-                tcp_stream: unsafe { TcpStream::from_raw_fd(0) },
-            }
-        }
-    }
-
     impl WebsocketSource {
         pub fn new(address: &str) -> Self {
             let server = TcpListener::bind(address).unwrap();
@@ -98,7 +89,7 @@ pub mod ws_destination {
     use tungstenite::client::{client_with_config, IntoClientRequest};
     use tungstenite::handshake::client::Request;
     use tungstenite::http::{header, Uri};
-    use tungstenite::protocol::Role;
+    use tungstenite::protocol::{Role, WebSocketContext};
     use tungstenite::{Message, WebSocket};
 
     use crate::cmd::{Cmd, Error};
@@ -107,19 +98,12 @@ pub mod ws_destination {
 
     pub struct WebsocketDestination {
         tcp_stream: TcpStream,
+        context: WebSocketContext,
     }
 
     impl PipelineStep for WebsocketDestination {
         fn get_step_type(&self) -> PipelineStepType {
             PipelineStepType::Destination
-        }
-    }
-
-    impl Default for WebsocketDestination {
-        fn default() -> Self {
-            Self {
-                tcp_stream: unsafe { TcpStream::from_raw_fd(0) },
-            }
         }
     }
 
@@ -133,16 +117,21 @@ pub mod ws_destination {
                 let errno = std::io::Error::last_os_error();
                 Err(errno)
             } else {
-                let m = &mut self.get_websocket().read().unwrap();
+                // let m = &mut self.get_websocket().read().unwrap();
+                let mut m = &mut self.context.read::<TcpStream>(&mut self.tcp_stream).unwrap();
                 match m {
                     Message::Text(data) => {
-                        unsafe{
-                            std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.as_bytes().len());
+                        unsafe {
+                            std::ptr::copy(
+                                data.as_mut_ptr(),
+                                buf.as_mut_ptr(),
+                                data.as_bytes().len(),
+                            );
                         }
                         Ok(data.as_bytes().len())
                     }
                     Message::Binary(data) => {
-                        unsafe{
+                        unsafe {
                             std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.len());
                         }
                         Ok(data.len())
@@ -194,10 +183,12 @@ pub mod ws_destination {
                 print!("{}:{}", header.0, header.1.to_str().unwrap());
             }
             // let l = client_with_config(req, connection.try_clone().unwrap(), None).unwrap();
-            let l = client(req, connection.try_clone().unwrap()).unwrap();
+            let mut l = client(req, connection.try_clone().unwrap()).unwrap();
+            l.0.flush().unwrap();
             //handle errors
             WebsocketDestination {
                 tcp_stream: connection,
+                context: WebSocketContext::new(Role::Client, None),
             }
         }
 
