@@ -27,8 +27,8 @@ fn main() {
     let args = make_cmd();
     let mut steps: Vec<Box<dyn PipelineStep>> = Vec::new();
     steps.push(Box::new(STDioStep::new()));
-    steps.push(Box::new(STDioStep::new()));
-    // steps.push(Box::new(WebsocketDestination::new("ws://127.0.0.1:6666")));
+    // steps.push(Box::new(STDioStep::new()));
+    steps.push(Box::new(WebsocketDestination::new("ws://127.0.0.1:6666")));
     let mut pipeline = Pipeline::new(steps, None).unwrap();
     while true {
         pipeline.read_source();

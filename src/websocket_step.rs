@@ -66,7 +66,7 @@ pub mod ws_source {
         fn default() -> Self {
             Self {
                 _tcp_server: TcpListener::bind("127.0.0.1:0").unwrap(),
-                tcp_stream: unsafe{TcpStream::from_raw_fd(0)},
+                tcp_stream: unsafe { TcpStream::from_raw_fd(0) },
             }
         }
     }
@@ -91,13 +91,13 @@ pub mod ws_source {
 #[allow(non_snake_case, unused_variables, dead_code)]
 pub mod ws_destination {
     use clap::{Arg, ArgAction, Command};
-    use tungstenite::http::{Uri, header};
     use std::io::{Read, Write};
     use std::net::TcpStream;
     use std::os::fd::{AsRawFd, FromRawFd};
-    use tungstenite::client::{client_with_config, IntoClientRequest};
     use tungstenite::client::client;
+    use tungstenite::client::{client_with_config, IntoClientRequest};
     use tungstenite::handshake::client::Request;
+    use tungstenite::http::{header, Uri};
     use tungstenite::protocol::Role;
     use tungstenite::{Message, WebSocket};
 
@@ -118,7 +118,7 @@ pub mod ws_destination {
     impl Default for WebsocketDestination {
         fn default() -> Self {
             Self {
-                tcp_stream: unsafe{TcpStream::from_raw_fd(0)},
+                tcp_stream: unsafe { TcpStream::from_raw_fd(0) },
             }
         }
     }
@@ -133,7 +133,25 @@ pub mod ws_destination {
                 let errno = std::io::Error::last_os_error();
                 Err(errno)
             } else {
-                self.tcp_stream.read(buf)
+                let m = &mut self.get_websocket().read().unwrap();
+                match m {
+                    Message::Text(data) => {
+                        unsafe{
+                            std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.as_bytes().len());
+                        }
+                        Ok(data.as_bytes().len())
+                    }
+                    Message::Binary(data) => {
+                        unsafe{
+                            std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.len());
+                        }
+                        Ok(data.len())
+                    }
+                    Message::Ping(_) | Message::Pong(_) | Message::Close(_) | Message::Frame(_) => {
+                        Ok(0)
+                    }
+                }
+                // self.tcp_stream.read(buf)
             }
         }
     }
@@ -166,14 +184,14 @@ pub mod ws_destination {
     impl WebsocketDestination {
         pub fn new(address: &str) -> Self {
             let uri: Uri = address.parse::<Uri>().unwrap();
-            let mut addr= String::from(uri.host().unwrap());
+            let mut addr = String::from(uri.host().unwrap());
             addr.push_str(":");
             addr.push_str(uri.port().unwrap().as_str());
             let connection = TcpStream::connect(addr).unwrap();
             // let req = Request::builder().uri(address).body(()).unwrap();
             let req = uri.into_client_request().unwrap();
-            for header in req.headers(){
-                print!("{}:{}", header.0, header.1.to_str().unwrap());  
+            for header in req.headers() {
+                print!("{}:{}", header.0, header.1.to_str().unwrap());
             }
             // let l = client_with_config(req, connection.try_clone().unwrap(), None).unwrap();
             let l = client(req, connection.try_clone().unwrap()).unwrap();

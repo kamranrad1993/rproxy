@@ -8,7 +8,7 @@ pub mod io_step {
 
     impl PipelineStep for STDioStep {
         fn get_step_type(&self) -> PipelineStepType {
-            PipelineStepType::Source_Destination
+            PipelineStepType::SourceAndDest
         }
     }
 
