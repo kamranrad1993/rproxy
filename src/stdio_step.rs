@@ -41,10 +41,6 @@ pub mod io_step {
     impl Write for STDioStep {
         fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
             let mut io = stdout();
-            // let i = vec![1;8];
-            // io.write(i.as_slice()).unwrap();
-            // io.flush().unwrap();
-            print!("gggg");
             io.write(buf)
         }
 

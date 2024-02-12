@@ -29,10 +29,9 @@ fn main() {
     steps.push(Box::new(STDioStep::new()));
     // steps.push(Box::new(STDioStep::new()));
     steps.push(Box::new(WebsocketDestination::new("ws://127.0.0.1:6666")));
-    let mut pipeline = Pipeline::new(steps, None).unwrap();
+    let mut pipeline = Pipeline::new(steps, Some(1024)).unwrap();
     while true {
-        pipeline.read_source();
-        pipeline.read_destination();
+        pipeline.read_source().unwrap();
+        pipeline.read_destination().unwrap();
     }
-    println!("Hello, world!");
 }

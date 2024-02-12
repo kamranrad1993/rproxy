@@ -117,8 +117,11 @@ pub mod ws_destination {
                 let errno = std::io::Error::last_os_error();
                 Err(errno)
             } else {
-                // let m = &mut self.get_websocket().read().unwrap();
-                let mut m = &mut self.context.read::<TcpStream>(&mut self.tcp_stream).unwrap();
+                let m = &mut self.get_websocket().read().unwrap();
+                // let mut m = &mut self
+                //     .context
+                //     .read::<TcpStream>(&mut self.tcp_stream)
+                //     .unwrap();
                 match m {
                     Message::Text(data) => {
                         unsafe {
@@ -149,8 +152,15 @@ pub mod ws_destination {
         fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
             let vec = Vec::from(buf);
             let msg = Message::Binary(vec);
-            self.get_websocket().write(msg).unwrap();
-            Ok(buf.len())
+            let result = self.get_websocket().send(msg);
+            match result {
+                Ok(_) => {
+                    Ok(buf.len())
+                },
+                Err(error) => {
+                    panic!("{}", error);
+                }
+            }
         }
 
         fn flush(&mut self) -> std::io::Result<()> {
@@ -178,13 +188,24 @@ pub mod ws_destination {
             addr.push_str(uri.port().unwrap().as_str());
             let connection = TcpStream::connect(addr).unwrap();
             // let req = Request::builder().uri(address).body(()).unwrap();
-            let req = uri.into_client_request().unwrap();
-            for header in req.headers() {
-                print!("{}:{}", header.0, header.1.to_str().unwrap());
-            }
+            let req: tungstenite::http::Request<()> = uri.into_client_request().unwrap();
             // let l = client_with_config(req, connection.try_clone().unwrap(), None).unwrap();
             let mut l = client(req, connection.try_clone().unwrap()).unwrap();
-            l.0.flush().unwrap();
+
+            // let mut m = tungstenite::Message::Text(String::from("hi"));
+            // l.0.send(m).unwrap();
+            // let mut w = WebSocket::from_raw_socket(
+            //     connection.try_clone().unwrap(),
+            //     Role::Client,
+            //     None,
+            // );
+            // m = tungstenite::Message::Text(String::from("again"));
+            // w.write(m).unwrap();
+            // w.flush().unwrap();
+            // m = tungstenite::Message::Text(String::from("again"));
+            // w.write(m).unwrap();
+            // w.flush().unwrap();
+
             //handle errors
             WebsocketDestination {
                 tcp_stream: connection,

@@ -117,6 +117,7 @@ pub mod pipeline {
             for i in 0..self.steps.len() - 1 {
                 let size = self.steps[i].read(data.as_mut_slice()).unwrap();
                 self.steps[i + 1].write(&data[0..size]).unwrap();
+                self.steps[i + 1].flush().unwrap();
             }
             Ok(())
         }
@@ -124,10 +125,9 @@ pub mod pipeline {
         pub fn read_destination(&mut self) -> Result<(), IOError> {
             let mut data: Vec<u8> = vec![0; self.buffer_size.unwrap()];
             for i in (1..self.steps.len()).rev() {
-                // let l = i;
                 let size = self.steps[i].read(data.as_mut_slice()).unwrap();
-                // print!("llllll");
                 self.steps[i - 1].write(&data[0..size]).unwrap();
+                self.steps[i - 1].flush().unwrap();
             }
             Ok(())
         }
