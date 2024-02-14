@@ -192,6 +192,7 @@ pub mod ws_destination {
             // let l = client_with_config(req, connection.try_clone().unwrap(), None).unwrap();
             let mut l = client(req, connection.try_clone().unwrap()).unwrap();
 
+            
             // let mut m = tungstenite::Message::Text(String::from("hi"));
             // l.0.send(m).unwrap();
             // let mut w = WebSocket::from_raw_socket(
