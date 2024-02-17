@@ -3,6 +3,7 @@ pub mod io_step {
     use crate::pipeline_module::pipeline::{PipelineStep, PipelineStepType};
     use clap::{Arg, ArgAction};
     use std::io::{stdin, stdout, Read, Write};
+    use std::os::fd::AsFd;
 
     pub struct STDioStep {}
 
@@ -34,7 +35,18 @@ pub mod io_step {
     impl Read for STDioStep {
         fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
             let mut io = stdin();
-            io.read(buf)
+            let mut available: usize = 0;
+            let result: i32 =
+                unsafe { libc::ioctl(0, libc::FIONREAD, &mut available) };
+
+            if result == -1 {
+                let errno = std::io::Error::last_os_error();
+                Err(errno)
+            } else if result == 0 {
+                Ok(0)
+            } else {
+                io.read(buf)
+            }
         }
     }
 
