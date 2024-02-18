@@ -39,7 +39,7 @@ pub mod ws_source {
             if result == -1 {
                 let errno = std::io::Error::last_os_error();
                 Err(errno)
-            } else if result == 0 {
+            } else if available == 0 {
                 Ok(0)
             } else {
                 self.tcp_stream.read(buf)
@@ -118,7 +118,7 @@ pub mod ws_destination {
             if result == -1 {
                 let errno = std::io::Error::last_os_error();
                 Err(errno)
-            } else if result == 0 {
+            } else if available == 0 {
                 Ok(0)
             } else {
                 let m = &mut self.get_websocket().read().unwrap();
@@ -193,20 +193,6 @@ pub mod ws_destination {
             let req: tungstenite::http::Request<()> = uri.into_client_request().unwrap();
             // let l = client_with_config(req, connection.try_clone().unwrap(), None).unwrap();
             let mut l = client(req, connection.try_clone().unwrap()).unwrap();
-
-            // let mut m = tungstenite::Message::Text(String::from("hi"));
-            // l.0.send(m).unwrap();
-            // let mut w = WebSocket::from_raw_socket(
-            //     connection.try_clone().unwrap(),
-            //     Role::Client,
-            //     None,
-            // );
-            // m = tungstenite::Message::Text(String::from("again"));
-            // w.write(m).unwrap();
-            // w.flush().unwrap();
-            // m = tungstenite::Message::Text(String::from("again"));
-            // w.write(m).unwrap();
-            // w.flush().unwrap();
 
             //handle errors
             WebsocketDestination {

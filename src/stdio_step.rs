@@ -36,13 +36,12 @@ pub mod io_step {
         fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
             let mut io = stdin();
             let mut available: usize = 0;
-            let result: i32 =
-                unsafe { libc::ioctl(0, libc::FIONREAD, &mut available) };
+            let result: i32 = unsafe { libc::ioctl(0, libc::FIONREAD, &mut available) };
 
             if result == -1 {
                 let errno = std::io::Error::last_os_error();
                 Err(errno)
-            } else if result == 0 {
+            } else if available == 0 {
                 Ok(0)
             } else {
                 io.read(buf)

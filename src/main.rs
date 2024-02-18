@@ -70,48 +70,6 @@ fn main() {
         eprintln!("Warning: unused arguments left: {:?}.", remaining);
     }
 
-    // let mut pipeline = Arc::new(Mutex::new(Pipeline::new(steps, Some(1024)).unwrap()));
-    // let mut cloned_pipeline = pipeline.clone();
-
-    // let handle_1 = std::thread::spawn(move || {
-    //     while true {
-    //         {
-    //             let mut lock = pipeline.lock().unwrap();
-    //             (*lock).read_source().unwrap();
-    //         }
-    //         // let mut lock = pipeline.lock();
-    //         // match &mut lock {
-    //         //     Ok(p) => {
-    //         //         (*p).read_source().unwrap();
-    //         //         drop(p);
-    //         //     }
-    //         //     Err(e) => std::thread::sleep(Duration::from_millis(10)),
-    //         // }
-    //         std::thread::sleep(Duration::from_millis(10))
-    //     }
-    // });
-
-    // let handle_2 = std::thread::spawn(move || {
-    //     while true {
-    //         {
-    //             let mut lock = cloned_pipeline.lock().unwrap();
-    //             (*lock).read_destination().unwrap();
-    //         }
-    //         // let mut lock = cloned_pipeline.lock();
-    //         // match &mut lock {
-    //         //     Ok(p) => {
-    //         //         (*p).read_destination().unwrap();
-    //         //         drop(p);
-    //         //     }
-    //         //     Err(e) => std::thread::sleep(Duration::from_millis(10)),
-    //         // }
-    //         std::thread::sleep(Duration::from_millis(10))
-    //     }
-    // });
-
-    // // handle_1.join().unwrap();
-    // handle_2.join().unwrap();
-
     let mut pipeline = Pipeline::new(steps, Some(1024)).unwrap();
     while true {
         pipeline.read_source().unwrap();
