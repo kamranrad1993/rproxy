@@ -1,6 +1,5 @@
 #[allow(non_snake_case, unused_variables, dead_code)]
 pub mod ws_source {
-    use crate::cmd::{Cmd, Error};
     use crate::pipeline_module::pipeline::{PipelineStep, PipelineStepType};
     use clap::{Arg, ArgAction, Command};
     use std::os::fd::FromRawFd;
@@ -47,17 +46,6 @@ pub mod ws_source {
         }
     }
 
-    impl Cmd for WebsocketSource {
-        fn get_cmd(command: clap::Command) -> Result<Command, Error> {
-            Ok(command.arg(
-                Arg::new("websocket(ws)")
-                    .long("websocket")
-                    .action(ArgAction::Append)
-                    .required(false),
-            ))
-        }
-    }
-
     impl PipelineStep for WebsocketSource {
         fn get_step_type(&self) -> PipelineStepType {
             PipelineStepType::Source
@@ -94,7 +82,6 @@ pub mod ws_destination {
     use tungstenite::protocol::{Role, WebSocketContext};
     use tungstenite::{Message, WebSocket};
 
-    use crate::cmd::{Cmd, Error};
 
     use crate::pipeline_module::pipeline::{PipelineStep, PipelineStepType};
 
@@ -168,17 +155,6 @@ pub mod ws_destination {
         fn flush(&mut self) -> std::io::Result<()> {
             self.get_websocket().flush().unwrap();
             Ok(())
-        }
-    }
-
-    impl Cmd for WebsocketDestination {
-        fn get_cmd(command: clap::Command) -> Result<Command, Error> {
-            Ok(command.arg(
-                Arg::new("websocket_c(ws)")
-                    .long("websocket_c")
-                    .action(ArgAction::Append)
-                    .required(false),
-            ))
         }
     }
 

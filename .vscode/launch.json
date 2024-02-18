@@ -12,7 +12,7 @@
             "program": "${workspaceRoot}/target/debug/proxy",
             "cwd": "${workspaceRoot}",
             "valuesFormatting": "parseText",
-            "args": "-s stdio -s ws://127.0.0.1:6666",
+            "args": "-s stdio -s b64-enc -s ws://127.0.0.1:6666",
             "env": {
                 "RUST_BACKTRACE": "1",
             },

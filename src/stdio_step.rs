@@ -1,5 +1,4 @@
 pub mod io_step {
-    use crate::pipeline_module::cmd::Cmd;
     use crate::pipeline_module::pipeline::{PipelineStep, PipelineStepType};
     use clap::{Arg, ArgAction};
     use std::io::{stdin, stdout, Read, Write};
@@ -16,19 +15,6 @@ pub mod io_step {
     impl Default for STDioStep {
         fn default() -> Self {
             Self {}
-        }
-    }
-
-    impl Cmd for STDioStep {
-        fn get_cmd(command: clap::Command) -> Result<clap::Command, crate::cmd::Error> {
-            Ok(command
-                .arg(
-                    Arg::new("stdio(-)")
-                        .long("stdin")
-                        .action(ArgAction::Append)
-                        .required(false),
-                )
-                .about("Read STDin. Used for sending data"))
         }
     }
 

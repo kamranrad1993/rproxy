@@ -1,20 +1,6 @@
 #[allow(non_snake_case, unused_variables, dead_code)]
 
-pub mod cmd {
-    use clap::Command;
-
-    #[derive(Debug)]
-    pub enum Error {
-        Err(String),
-    }
-
-    pub trait Cmd {
-        fn get_cmd(command: Command) -> Result<Command, Error>;
-    }
-}
-
 pub mod pipeline {
-    use crate::cmd::Cmd;
     use clap::Arg;
     use std::{
         io::{self, Read, Write},
@@ -153,9 +139,4 @@ pub mod pipeline {
         }
     }
 
-    impl Cmd for Pipeline {
-        fn get_cmd(command: clap::Command) -> Result<clap::Command, crate::cmd::Error> {
-            Ok(command)
-        }
-    }
 }

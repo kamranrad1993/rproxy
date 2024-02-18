@@ -1,39 +1,16 @@
-use std::{
-    sync::{Arc, Mutex},
-    time::Duration,
+use proxy::{
+    Base64Decoder, Base64Encoder, Pipeline, PipelineStep, STDioStep, WebsocketDestination,
+    WebsocketSource,
 };
-
-use clap::{command, ArgMatches, Command};
-#[allow(unused_imports)]
-use proxy::{cmd::Cmd, Pipeline, PipelineStep, STDioStep, WebsocketDestination, WebsocketSource};
-
-fn make_cmd() -> ArgMatches {
-    let mut commands: Command = command!();
-    commands = Pipeline::get_cmd(commands).unwrap();
-    commands = STDioStep::get_cmd(commands).unwrap();
-    commands = WebsocketSource::get_cmd(commands).unwrap();
-    commands = WebsocketDestination::get_cmd(commands).unwrap();
-
-    return commands.get_matches();
-}
 
 const USAGE: &'static str = "
 Usage: 
   proxy [OPTIONS]
 
 Options:
-  --stdin       stdio           
-  --websocket   websocket    
+  -s define step           
   -h, --help     Print help
-  -v, --version  Print version
 ";
-
-// #[derive(Debug)]
-struct AppArgs {
-    steps: Vec<Box<dyn PipelineStep>>,
-    ws: String,
-    ws_l: String,
-}
 
 fn main() {
     let mut pargs = pico_args::Arguments::from_env();
@@ -59,6 +36,8 @@ fn main() {
             }
             Some("ws-l") => steps.push(Box::new(WebsocketSource::new(step.as_str()))),
             Some("ws") => steps.push(Box::new(WebsocketDestination::new(step.as_str()))),
+            Some("b64-enc") => steps.push(Box::new(Base64Encoder::new(None))),
+            Some("b64-dec") => steps.push(Box::new(Base64Decoder::new(None))),
             None | _ => {
                 print!("unknown step : {}", step);
             }
