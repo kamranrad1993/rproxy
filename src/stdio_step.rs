@@ -10,6 +10,18 @@ pub mod io_step {
         fn get_step_type(&self) -> PipelineStepType {
             PipelineStepType::SourceAndDest
         }
+
+        fn len(&self) -> std::io::Result<usize> {
+            let mut available: usize = 0;
+            let result: i32 =
+                unsafe { libc::ioctl(0, libc::FIONREAD, &mut available) };
+            if result == -1 {
+                let errno = std::io::Error::last_os_error();
+                Err(errno)
+            }else {
+                Ok(available)
+            }
+        }
     }
 
     impl Default for STDioStep {

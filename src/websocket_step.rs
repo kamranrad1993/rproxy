@@ -50,6 +50,18 @@ pub mod ws_source {
         fn get_step_type(&self) -> PipelineStepType {
             PipelineStepType::Source
         }
+        
+        fn len(&self) -> std::io::Result<usize> {
+            let mut available: usize = 0;
+            let result: i32 =
+                unsafe { libc::ioctl(self.tcp_stream.as_raw_fd(), libc::FIONREAD, &mut available) };
+            if result == -1 {
+                let errno = std::io::Error::last_os_error();
+                Err(errno)
+            }else {
+                Ok(available)
+            }
+        }
     }
 
     impl WebsocketSource {
@@ -82,7 +94,6 @@ pub mod ws_destination {
     use tungstenite::protocol::{Role, WebSocketContext};
     use tungstenite::{Message, WebSocket};
 
-
     use crate::pipeline_module::pipeline::{PipelineStep, PipelineStepType};
 
     pub struct WebsocketDestination {
@@ -93,6 +104,18 @@ pub mod ws_destination {
     impl PipelineStep for WebsocketDestination {
         fn get_step_type(&self) -> PipelineStepType {
             PipelineStepType::Destination
+        }
+
+        fn len(&self) -> std::io::Result<usize> {
+            let mut available: usize = 0;
+            let result: i32 =
+                unsafe { libc::ioctl(self.tcp_stream.as_raw_fd(), libc::FIONREAD, &mut available) };
+            if result == -1 {
+                let errno = std::io::Error::last_os_error();
+                Err(errno)
+            }else {
+                Ok(available)
+            }
         }
     }
 

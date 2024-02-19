@@ -11,11 +11,15 @@ pub mod base64_encode {
         fn get_step_type(&self) -> PipelineStepType {
             todo!()
         }
+        
+        fn len(&self) -> std::io::Result<usize> {
+            Ok(self.buffer.len())
+        }
     }
 
     impl Read for Base64Encoder {
         fn read(&mut self, mut buf: &mut [u8]) -> std::io::Result<usize> {
-            let length = std::cmp::max(self.buffer.len(), buf.len());
+            let length = std::cmp::min(self.buffer.len(), buf.len());
             let size = buf.write(&self.buffer[0..length]).unwrap();
             self.buffer.drain(0..size);
             Ok(size)
@@ -61,6 +65,14 @@ pub mod base64_decode {
         fn get_step_type(&self) -> PipelineStepType {
             todo!()
         }
+
+        fn len(&self) -> std::io::Result<usize> {
+            if self.base64_buffer.len() > 0 {
+                Ok(self.base64_buffer.len())
+            }else {
+                Ok(self.buffer.len())
+            }
+        }
     }
 
     impl Read for Base64Decoder {
@@ -70,7 +82,7 @@ pub mod base64_decode {
                 self.base64_buffer = general_purpose::STANDARD.decode(data_str).unwrap();
                 self.buffer.clear();
             }
-            let length = std::cmp::max(self.base64_buffer.len(), buf.len());
+            let length = std::cmp::min(self.base64_buffer.len(), buf.len());
             let size = buf.write(&self.base64_buffer[0..length]).unwrap();
             self.base64_buffer.drain(0..size);
             Ok(size)
