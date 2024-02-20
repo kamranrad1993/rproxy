@@ -9,7 +9,7 @@ pub mod base64_encode {
 
     impl PipelineStep for Base64Encoder {
         fn get_step_type(&self) -> PipelineStepType {
-            todo!()
+            PipelineStepType::Middle
         }
         
         fn len(&self) -> std::io::Result<usize> {
