@@ -20,13 +20,14 @@ pub mod ws_source {
         fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
             let vec = Vec::from(buf);
             let msg = Message::Binary(vec);
-            self.get_websocket().write(msg).unwrap();
+            self.get_websocket().send(msg).unwrap();
             Ok(buf.len())
         }
 
         fn flush(&mut self) -> std::io::Result<()> {
-            self.get_websocket().flush().unwrap();
-            Ok(())
+            // self.get_websocket().flush().unwrap();
+            // Ok(())
+            self.tcp_stream.flush()
         }
     }
 

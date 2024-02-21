@@ -75,7 +75,7 @@ pub mod base64 {
 
     pub struct Base64Decoder {
         buffer: Vec<u8>,
-        // base64_buffer: Vec<u8>,
+        base64_buffer: Vec<u8>,
         work_mode: PipelineDirection,
         pipeline_direction: PipelineDirection,
     }
@@ -102,41 +102,41 @@ pub mod base64 {
 
     impl Read for Base64Decoder {
         fn read(&mut self, mut buf: &mut [u8]) -> std::io::Result<usize> {
-            // if (self.base64_buffer.len() == 0) {
-            //     let data_str = String::from_utf8(self.buffer.clone()).unwrap();
-            //     self.base64_buffer = general_purpose::STANDARD.decode(data_str).unwrap();
-            //     self.buffer.clear();
-            // }
-            // let length = std::cmp::min(self.base64_buffer.len(), buf.len());
-            // let size = buf.write(&self.base64_buffer[0..length]).unwrap();
-            // self.base64_buffer.drain(0..size);
-            // Ok(size)
-
-            let length = std::cmp::min(self.buffer.len(), buf.len());
-            let size = buf.write(&self.buffer[0..length]).unwrap();
-            self.buffer.drain(0..size);
+            if (self.base64_buffer.len() == 0) {
+                let data_str = String::from_utf8(self.buffer.clone()).unwrap();
+                self.base64_buffer = general_purpose::STANDARD.decode(data_str).unwrap();
+                self.buffer.clear();
+            }
+            let length = std::cmp::min(self.base64_buffer.len(), buf.len());
+            let size = buf.write(&self.base64_buffer[0..length]).unwrap();
+            self.base64_buffer.drain(0..size);
             Ok(size)
+
+            // let length = std::cmp::min(self.buffer.len(), buf.len());
+            // let size = buf.write(&self.buffer[0..length]).unwrap();
+            // self.buffer.drain(0..size);
+            // Ok(size)
         }
     }
 
     impl Write for Base64Decoder {
         fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-            // let b64 = general_purpose::STANDARD.encode(buf);
-            // self.buffer.extend(b64.as_bytes());
-            // Ok(buf.len())
+            let b64 = general_purpose::STANDARD.encode(buf);
+            self.buffer.extend(b64.as_bytes());
+            Ok(buf.len())
 
-            if self.work_mode == self.pipeline_direction {
-                let b64 = general_purpose::STANDARD.decode(buf).unwrap();
-                self.buffer.extend(b64.as_slice());
-                Ok(b64.len())
-            } else {
-                self.buffer.extend(buf);
-                Ok(buf.len())
-            }
+            // if self.work_mode == self.pipeline_direction {
+            //     let b64 = general_purpose::STANDARD.decode(buf).unwrap();
+            //     self.buffer.extend(b64.as_slice());
+            //     Ok(b64.len())
+            // } else {
+            //     self.buffer.extend(buf);
+            //     Ok(buf.len())
+            // }
         }
 
         fn flush(&mut self) -> std::io::Result<()> {
-            todo!()
+            Ok(())
         }
     }
 
@@ -157,7 +157,7 @@ pub mod base64 {
 
             Base64Decoder {
                 buffer: vec![0; 0],
-                // base64_buffer: vec![0; 0],
+                base64_buffer: vec![0; 0],
                 work_mode: work_mode,
                 pipeline_direction: PipelineDirection::Forward,
             }

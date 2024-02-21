@@ -13,7 +13,7 @@
             "cwd": "${workspaceRoot}",
             "valuesFormatting": "parseText",
             // "args": "-s stdio: -s b64-enc:fw -s ws://127.0.0.1:6666",
-            "args": "-s ws-l://127.0.0.1:6666 -s stdio:",
+            "args": "-s ws-l://127.0.0.1:6666 -s b64-dec:fw -s stdio:",
             "env": {
                 "RUST_BACKTRACE": "1",
             },
