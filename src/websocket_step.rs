@@ -1,7 +1,8 @@
 #[allow(non_snake_case, unused_variables, dead_code)]
 pub mod ws_source {
-    use crate::pipeline_module::pipeline::{PipelineStep, PipelineStepType};
+    use crate::pipeline_module::pipeline::{PipelineStep, PipelineStepType, PipelineDirection};
     use clap::{Arg, ArgAction, Command};
+    use tungstenite::http::Uri;
     use std::os::fd::FromRawFd;
     use std::{
         io::{Read, Write},
@@ -62,11 +63,19 @@ pub mod ws_source {
                 Ok(available)
             }
         }
+
+        fn set_pipeline_direction (&mut self, direction: PipelineDirection){
+            // println!("{}", direction);
+        }
     }
 
     impl WebsocketSource {
         pub fn new(address: &str) -> Self {
-            let server = TcpListener::bind(address).unwrap();
+            let uri: Uri = address.parse::<Uri>().unwrap();
+            let mut addr = String::from(uri.host().unwrap());
+            addr.push_str(":");
+            addr.push_str(uri.port().unwrap().as_str());
+            let server = TcpListener::bind(addr).unwrap();
             let r = server.accept().unwrap().0;
             accept(r.try_clone().unwrap()).unwrap();
             WebsocketSource {
@@ -94,7 +103,7 @@ pub mod ws_destination {
     use tungstenite::protocol::{Role, WebSocketContext};
     use tungstenite::{Message, WebSocket};
 
-    use crate::pipeline_module::pipeline::{PipelineStep, PipelineStepType};
+    use crate::pipeline_module::pipeline::{PipelineStep, PipelineStepType, PipelineDirection};
 
     pub struct WebsocketDestination {
         tcp_stream: TcpStream,
@@ -116,6 +125,11 @@ pub mod ws_destination {
             }else {
                 Ok(available)
             }
+        }
+
+        fn set_pipeline_direction (&mut self, direction: PipelineDirection){
+            // println!("{}", direction);
+            
         }
     }
 

@@ -3,6 +3,7 @@
 pub mod pipeline {
     use clap::Arg;
     use std::{
+        fmt::Display,
         io::{self, Read, Write},
         ops::{BitAnd, Deref, DerefMut},
         string::ParseError,
@@ -27,6 +28,37 @@ pub mod pipeline {
         SourceAndDest = 0x05,
     }
 
+    pub enum PipelineDirection {
+        Forward = 0x01,
+        Backward = 0x02,
+    }
+
+    impl Clone for PipelineDirection {
+        fn clone(&self) -> Self {
+            match self {
+                Self::Forward => Self::Forward,
+                Self::Backward => Self::Backward,
+            }
+        }
+    }
+
+    impl Copy for PipelineDirection {}
+
+    impl PartialEq for PipelineDirection {
+        fn eq(&self, other: &Self) -> bool {
+            core::mem::discriminant(self) == core::mem::discriminant(other)
+        }
+    }
+
+    impl Display for PipelineDirection {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                PipelineDirection::Forward => write!(f, "PipelineDirection::Forward"),
+                PipelineDirection::Backward => write!(f, "PipelineDirection::Backward"),
+            }
+        }
+    }
+
     impl BitAnd for PipelineStepType {
         type Output = PipelineStepType;
 
@@ -48,14 +80,25 @@ pub mod pipeline {
         }
     }
 
+    impl Display for PipelineStepType{
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                PipelineStepType::Source => write!(f, "PipelineStepType::Source"),
+                PipelineStepType::Middle => write!(f, "PipelineStepType::Middle"),
+                PipelineStepType::Destination => write!(f, "PipelineStepType::Destination"),
+                PipelineStepType::SourceAndDest => write!(f, "PipelineStepType::SourceAndDest"),
+            }
+        }
+    }
+
     pub trait PipelineStep: Read + Write + Send + Sync {
         fn get_step_type(&self) -> PipelineStepType;
         fn len(&self) -> std::io::Result<usize>;
+        fn set_pipeline_direction(&mut self, direction: PipelineDirection);
     }
 
     pub struct Pipeline {
-        forward_steps: Vec<Box<dyn PipelineStep>>,
-        backward_steps: Vec<Box<dyn PipelineStep>>,
+        steps: Vec<Box<dyn PipelineStep>>,
         buffer_size: Option<usize>,
     }
 
@@ -63,56 +106,40 @@ pub mod pipeline {
         type Target = [Box<dyn PipelineStep>];
 
         fn deref(&self) -> &Self::Target {
-            &self.forward_steps
+            &self.steps
         }
     }
 
     impl DerefMut for Pipeline {
         fn deref_mut(&mut self) -> &mut Self::Target {
-            &mut self.forward_steps
+            &mut self.steps
         }
     }
 
     impl Pipeline {
         pub fn new(
-            forward_steps: Vec<Box<dyn PipelineStep>>,
-            backward_steps: Vec<Box<dyn PipelineStep>>,
+            steps: Vec<Box<dyn PipelineStep>>,
             buffer_size: Option<usize>,
         ) -> Result<Self, IOError> {
-            if forward_steps.len() < 2 || backward_steps.len() < 2 {
+            if steps.len() < 2 {
                 Err(IOError::InvalidStep(format!(
                     "Step count must greater than two."
                 )))
-            } else if (forward_steps.first().unwrap().get_step_type() & PipelineStepType::Source
+            } else if (steps.first().unwrap().get_step_type() & PipelineStepType::Source
                 != PipelineStepType::Source)
-                || (backward_steps.first().unwrap().get_step_type() & PipelineStepType::Source
-                    != PipelineStepType::Source)
             {
                 Err(IOError::InvalidStep(format!(
                     "First step type must be PipelineStepType::Source."
                 )))
-            } else if (forward_steps.last().unwrap().get_step_type()
-                & PipelineStepType::Destination
+            } else if (steps.last().unwrap().get_step_type() & PipelineStepType::Destination
                 != PipelineStepType::Destination)
-                || (backward_steps.last().unwrap().get_step_type() & PipelineStepType::Destination
-                    != PipelineStepType::Destination)
             {
                 Err(IOError::InvalidStep(format!(
                     "Last step type must be PipelineStepType::Destination."
                 )))
             } else {
-                for i in 1..forward_steps.len() - 2 {
-                    if forward_steps[i].get_step_type() & PipelineStepType::Middle
-                        != PipelineStepType::Middle
-                    {
-                        return Err(IOError::InvalidStep(format!(
-                            "Middle step type must be PipelineStepType::Middle."
-                        )));
-                    }
-                }
-
-                for i in 1..backward_steps.len() - 2 {
-                    if backward_steps[i].get_step_type() & PipelineStepType::Middle
+                for i in 1..steps.len() - 2 {
+                    if steps[i].get_step_type() & PipelineStepType::Middle
                         != PipelineStepType::Middle
                     {
                         return Err(IOError::InvalidStep(format!(
@@ -122,40 +149,46 @@ pub mod pipeline {
                 }
 
                 Ok(Pipeline {
-                    forward_steps: forward_steps,
-                    backward_steps: backward_steps,
+                    steps: steps,
                     buffer_size: Some(buffer_size.unwrap_or(1024)),
                 })
             }
         }
 
         pub fn read_source(&mut self) -> Result<(), IOError> {
-            for i in 0..self.forward_steps.len() - 1 {
-                let size = std::cmp::min(
-                    self.buffer_size.unwrap(),
-                    self.forward_steps[i].len().unwrap(),
-                );
+            for i in 0..self.steps.len() {
+                self.steps[i].set_pipeline_direction(PipelineDirection::Forward);
+                // println!("{}", self.steps[i].get_step_type());
+            }
+
+            for i in 0..self.steps.len() - 1 {
+                let size = std::cmp::min(self.buffer_size.unwrap(), self.steps[i].len().unwrap());
                 let mut data: Vec<u8> = vec![0; size];
-                let size = self.forward_steps[i].read(data.as_mut_slice()).unwrap();
+                // self.steps[i].set_pipeline_direction(PipelineDirection::Forward);
+                let size = self.steps[i].read(data.as_mut_slice()).unwrap();
                 if size > 0 {
-                    self.forward_steps[i + 1].write(&data[0..size]).unwrap();
-                    self.forward_steps[i + 1].flush().unwrap();
+                    // self.steps[i + 1].set_pipeline_direction(PipelineDirection::Forward);
+                    self.steps[i + 1].write(&data[0..size]).unwrap();
+                    self.steps[i + 1].flush().unwrap();
                 }
             }
             Ok(())
         }
 
         pub fn read_destination(&mut self) -> Result<(), IOError> {
-            for i in (1..self.forward_steps.len()).rev() {
-                let size = std::cmp::min(
-                    self.buffer_size.unwrap(),
-                    self.forward_steps[i].len().unwrap(),
-                );
+            for i in 0..self.steps.len() {
+                self.steps[i].set_pipeline_direction(PipelineDirection::Backward);
+            }
+
+            for i in (1..self.steps.len()).rev() {
+                let size = std::cmp::min(self.buffer_size.unwrap(), self.steps[i].len().unwrap());
                 let mut data: Vec<u8> = vec![0; size];
-                let size = self.forward_steps[i].read(data.as_mut_slice()).unwrap();
+                // self.steps[i].set_pipeline_direction(PipelineDirection::Backward);
+                let size = self.steps[i].read(data.as_mut_slice()).unwrap();
                 if size > 0 {
-                    self.forward_steps[i - 1].write(&data[0..size]).unwrap();
-                    self.forward_steps[i - 1].flush().unwrap();
+                    // self.steps[i - 1].set_pipeline_direction(PipelineDirection::Backward);
+                    self.steps[i - 1].write(&data[0..size]).unwrap();
+                    self.steps[i - 1].flush().unwrap();
                 }
             }
             Ok(())
