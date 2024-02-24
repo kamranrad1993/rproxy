@@ -20,6 +20,25 @@ jobs:
       run: cargo build --release --verbose
     - name: Run tests
       run: cargo test --verbose
-  release:
-    outputs:
-    - ubuntu: ./targets/release/proxy
+    - name: Create release artifacts archive
+      uses: actions/upload-artifact@v3
+      with:
+        name: release-artifacts
+        path: target/release/*
+    - name: Create GitHub Release
+      uses: actions/create-release@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        tag_name: ${{ github.ref }}
+        release_name: ${{ github.ref }}
+        body: Release notes generated automatically!
+
+    - name: Upload release artifacts
+      uses: actions/upload-release-asset@v1
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      with:
+        upload_url: ${{ github.releases.upload_url }}
+        asset_name: ${{ github.sha }}.tar.gz
+        asset_path: ./.github/workflows/download-artifact.sh
