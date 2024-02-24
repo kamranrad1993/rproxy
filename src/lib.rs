@@ -8,4 +8,4 @@ mod stdio_step;
 pub use stdio_step::io_step::STDioStep;
 
 mod base64_step;
-pub use base64_step::{base64::Base64Decoder, base64::Base64Encoder};
+pub use base64_step::{base64::Base64};

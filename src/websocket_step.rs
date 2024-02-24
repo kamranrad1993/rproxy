@@ -1,14 +1,14 @@
 #[allow(non_snake_case, unused_variables, dead_code)]
 pub mod ws_source {
-    use crate::pipeline_module::pipeline::{PipelineStep, PipelineStepType, PipelineDirection};
+    use crate::pipeline_module::pipeline::{PipelineDirection, PipelineStep, PipelineStepType};
     use clap::{Arg, ArgAction, Command};
-    use tungstenite::http::Uri;
     use std::os::fd::FromRawFd;
     use std::{
         io::{Read, Write},
         net::{TcpListener, TcpStream},
         os::fd::AsRawFd,
     };
+    use tungstenite::http::Uri;
     use tungstenite::{accept, protocol::Role, Message, WebSocket};
 
     pub struct WebsocketSource {
@@ -25,9 +25,9 @@ pub mod ws_source {
         }
 
         fn flush(&mut self) -> std::io::Result<()> {
-            // self.get_websocket().flush().unwrap();
-            // Ok(())
-            self.tcp_stream.flush()
+            self.get_websocket().flush().unwrap();
+            Ok(())
+            // self.tcp_stream.flush()
         }
     }
 
@@ -43,7 +43,33 @@ pub mod ws_source {
             } else if available == 0 {
                 Ok(0)
             } else {
-                self.tcp_stream.read(buf)
+                // self.tcp_stream.read(buf)
+                let m = &mut self.get_websocket().read().unwrap();
+                // let mut m = &mut self
+                //     .context
+                //     .read::<TcpStream>(&mut self.tcp_stream)
+                //     .unwrap();
+                match m {
+                    Message::Text(data) => {
+                        unsafe {
+                            std::ptr::copy(
+                                data.as_mut_ptr(),
+                                buf.as_mut_ptr(),
+                                data.as_bytes().len(),
+                            );
+                        }
+                        Ok(data.as_bytes().len())
+                    }
+                    Message::Binary(data) => {
+                        unsafe {
+                            std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.len());
+                        }
+                        Ok(data.len())
+                    }
+                    Message::Ping(_) | Message::Pong(_) | Message::Close(_) | Message::Frame(_) => {
+                        Ok(0)
+                    }
+                }
             }
         }
     }
@@ -52,7 +78,7 @@ pub mod ws_source {
         fn get_step_type(&self) -> PipelineStepType {
             PipelineStepType::Source
         }
-        
+
         fn len(&self) -> std::io::Result<usize> {
             let mut available: usize = 0;
             let result: i32 =
@@ -60,12 +86,12 @@ pub mod ws_source {
             if result == -1 {
                 let errno = std::io::Error::last_os_error();
                 Err(errno)
-            }else {
+            } else {
                 Ok(available)
             }
         }
 
-        fn set_pipeline_direction (&mut self, direction: PipelineDirection){
+        fn set_pipeline_direction(&mut self, direction: PipelineDirection) {
             // println!("{}", direction);
         }
     }
@@ -104,7 +130,7 @@ pub mod ws_destination {
     use tungstenite::protocol::{Role, WebSocketContext};
     use tungstenite::{Message, WebSocket};
 
-    use crate::pipeline_module::pipeline::{PipelineStep, PipelineStepType, PipelineDirection};
+    use crate::pipeline_module::pipeline::{PipelineDirection, PipelineStep, PipelineStepType};
 
     pub struct WebsocketDestination {
         tcp_stream: TcpStream,
@@ -123,14 +149,13 @@ pub mod ws_destination {
             if result == -1 {
                 let errno = std::io::Error::last_os_error();
                 Err(errno)
-            }else {
+            } else {
                 Ok(available)
             }
         }
 
-        fn set_pipeline_direction (&mut self, direction: PipelineDirection){
+        fn set_pipeline_direction(&mut self, direction: PipelineDirection) {
             // println!("{}", direction);
-            
         }
     }
 

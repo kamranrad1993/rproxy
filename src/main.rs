@@ -1,7 +1,7 @@
 use std::slice::SliceIndex;
 
 use proxy::{
-    Base64Decoder, Base64Encoder, Pipeline, PipelineStep, STDioStep, WebsocketDestination,
+    Base64, Pipeline, PipelineStep, STDioStep, WebsocketDestination,
     WebsocketSource, PipelineDirection
 };
 
@@ -148,8 +148,7 @@ fn main() {
             }
             Some("ws-l") => forward_steps.push(Box::new(WebsocketSource::new(step.as_str()))),
             Some("ws") => forward_steps.push(Box::new(WebsocketDestination::new(step.as_str()))),
-            Some("b64-enc") => forward_steps.push(Box::new(Base64Encoder::new(config, None))),
-            Some("b64-dec") => forward_steps.push(Box::new(Base64Decoder::new( config, None))),
+            Some("b64") => forward_steps.push(Box::new(Base64::new(config, None))),
             None | _ => {
                 print!("unknown step : {}", step);
             }
