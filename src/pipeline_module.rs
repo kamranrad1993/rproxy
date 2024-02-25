@@ -1,7 +1,6 @@
-#[allow(non_snake_case, unused_variables, dead_code)]
+// #[allow(non_snake_case, unused_variables, dead_code)]
 
 pub mod pipeline {
-    use clap::Arg;
     use std::{
         fmt::Display,
         io::{self, Read, Write},
@@ -63,7 +62,7 @@ pub mod pipeline {
         type Output = PipelineStepType;
 
         fn bitand(self, rhs: Self) -> Self::Output {
-            let result_u32 = (self as u32 & rhs as u32);
+            let result_u32 = self as u32 & rhs as u32;
             match result_u32 {
                 0x01 => PipelineStepType::Source,
                 0x02 => PipelineStepType::Middle,
@@ -125,14 +124,14 @@ pub mod pipeline {
                 Err(IOError::InvalidStep(format!(
                     "Step count must greater than two."
                 )))
-            } else if (steps.first().unwrap().get_step_type() & PipelineStepType::Source
-                != PipelineStepType::Source)
+            } else if steps.first().unwrap().get_step_type() & PipelineStepType::Source
+                != PipelineStepType::Source
             {
                 Err(IOError::InvalidStep(format!(
                     "First step type must be PipelineStepType::Source."
                 )))
-            } else if (steps.last().unwrap().get_step_type() & PipelineStepType::Destination
-                != PipelineStepType::Destination)
+            } else if steps.last().unwrap().get_step_type() & PipelineStepType::Destination
+                != PipelineStepType::Destination
             {
                 Err(IOError::InvalidStep(format!(
                     "Last step type must be PipelineStepType::Destination."
@@ -162,10 +161,10 @@ pub mod pipeline {
             }
 
             for i in 0..self.steps.len() - 1 {
-                let size = std::cmp::min(self.buffer_size.unwrap(), self.steps[i].len().unwrap());
+                let mut size = std::cmp::min(self.buffer_size.unwrap(), self.steps[i].len().unwrap());
                 let mut data: Vec<u8> = vec![0; size];
                 // self.steps[i].set_pipeline_direction(PipelineDirection::Forward);
-                let size = self.steps[i].read(data.as_mut_slice()).unwrap();
+                size = self.steps[i].read(data.as_mut_slice()).unwrap();
                 if size > 0 {
                     // self.steps[i + 1].set_pipeline_direction(PipelineDirection::Forward);
                     self.steps[i + 1].write(&data[0..size]).unwrap();
@@ -181,10 +180,10 @@ pub mod pipeline {
             }
 
             for i in (1..self.steps.len()).rev() {
-                let size = std::cmp::min(self.buffer_size.unwrap(), self.steps[i].len().unwrap());
+                let mut size = std::cmp::min(self.buffer_size.unwrap(), self.steps[i].len().unwrap());
                 let mut data: Vec<u8> = vec![0; size];
                 // self.steps[i].set_pipeline_direction(PipelineDirection::Backward);
-                let size = self.steps[i].read(data.as_mut_slice()).unwrap();
+                size = self.steps[i].read(data.as_mut_slice()).unwrap();
                 if size > 0 {
                     // self.steps[i - 1].set_pipeline_direction(PipelineDirection::Backward);
                     self.steps[i - 1].write(&data[0..size]).unwrap();

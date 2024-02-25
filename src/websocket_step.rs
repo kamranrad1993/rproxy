@@ -1,8 +1,6 @@
 #[allow(non_snake_case, unused_variables, dead_code)]
 pub mod ws_source {
     use crate::pipeline_module::pipeline::{PipelineDirection, PipelineStep, PipelineStepType};
-    use clap::{Arg, ArgAction, Command};
-    use std::os::fd::FromRawFd;
     use std::{
         io::{Read, Write},
         net::{TcpListener, TcpStream},
@@ -52,19 +50,24 @@ pub mod ws_source {
                 match m {
                     Message::Text(data) => {
                         unsafe {
+                            let length = std::cmp::min(data.as_bytes().len(), buf.len());
                             std::ptr::copy(
                                 data.as_mut_ptr(),
                                 buf.as_mut_ptr(),
-                                data.as_bytes().len(),
+                                length,
                             );
+                            Ok(length)
                         }
-                        Ok(data.as_bytes().len())
+                        // buf.copy_from_slice(data.as_bytes());
                     }
                     Message::Binary(data) => {
                         unsafe {
-                            std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.len());
+                            let length = std::cmp::min(data.len(), buf.len());
+                            std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), length);
+                            Ok(length)
                         }
-                        Ok(data.len())
+                        // buf.copy_from_slice(data.as_slice());
+                        // buf = data.as_mut_slice();
                     }
                     Message::Ping(_) | Message::Pong(_) | Message::Close(_) | Message::Frame(_) => {
                         Ok(0)
@@ -119,14 +122,12 @@ pub mod ws_source {
 
 #[allow(non_snake_case, unused_variables, dead_code)]
 pub mod ws_destination {
-    use clap::{Arg, ArgAction, Command};
     use std::io::{Read, Write};
     use std::net::TcpStream;
-    use std::os::fd::{AsRawFd, FromRawFd};
+    use std::os::fd::AsRawFd;
     use tungstenite::client::client;
-    use tungstenite::client::{client_with_config, IntoClientRequest};
-    use tungstenite::handshake::client::Request;
-    use tungstenite::http::{header, Uri};
+    use tungstenite::client::IntoClientRequest;
+    use tungstenite::http::Uri;
     use tungstenite::protocol::{Role, WebSocketContext};
     use tungstenite::{Message, WebSocket};
 
@@ -179,19 +180,21 @@ pub mod ws_destination {
                 match m {
                     Message::Text(data) => {
                         unsafe {
+                            let length = std::cmp::min(data.as_bytes().len(), buf.len());
                             std::ptr::copy(
                                 data.as_mut_ptr(),
                                 buf.as_mut_ptr(),
                                 data.as_bytes().len(),
                             );
+                            Ok(length)
                         }
-                        Ok(data.as_bytes().len())
                     }
                     Message::Binary(data) => {
                         unsafe {
+                            let length = std::cmp::min(data.len(), buf.len());
                             std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.len());
+                            Ok(length)
                         }
-                        Ok(data.len())
                     }
                     Message::Ping(_) | Message::Pong(_) | Message::Close(_) | Message::Frame(_) => {
                         Ok(0)
@@ -231,7 +234,7 @@ pub mod ws_destination {
             // let req = Request::builder().uri(address).body(()).unwrap();
             let req: tungstenite::http::Request<()> = uri.into_client_request().unwrap();
             // let l = client_with_config(req, connection.try_clone().unwrap(), None).unwrap();
-            let mut l = client(req, connection.try_clone().unwrap()).unwrap();
+            client(req, connection.try_clone().unwrap()).unwrap();
 
             //handle errors
             WebsocketDestination {

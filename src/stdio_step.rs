@@ -1,8 +1,6 @@
 pub mod io_step {
     use crate::pipeline_module::pipeline::{PipelineStep, PipelineStepType, PipelineDirection};
-    use clap::{Arg, ArgAction};
     use std::io::{stdin, stdout, Read, Write};
-    use std::os::fd::AsFd;
 
     pub struct STDioStep {}
 
@@ -23,6 +21,7 @@ pub mod io_step {
             }
         }
 
+        #[allow(unused_variables)]
         fn set_pipeline_direction (&mut self, direction: PipelineDirection){
             
         }
