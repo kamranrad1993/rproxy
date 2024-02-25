@@ -12,7 +12,7 @@
             "program": "${workspaceRoot}/target/debug/proxy",
             "cwd": "${workspaceRoot}",
             "valuesFormatting": "parseText",
-            "args": "-s stdio: -s b64:fw -s ws://api.kamran.org:6666",
+            "args": "-s stdio: -s b64:fw -s ws://obfs.bikehike.ir:80",
             // "args": "-s ws-l://127.0.0.1:6666 -s b64:fw -s stdio:",
             "env": {
                 "RUST_BACKTRACE": "1",

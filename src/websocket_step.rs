@@ -51,11 +51,7 @@ pub mod ws_source {
                     Message::Text(data) => {
                         unsafe {
                             let length = std::cmp::min(data.as_bytes().len(), buf.len());
-                            std::ptr::copy(
-                                data.as_mut_ptr(),
-                                buf.as_mut_ptr(),
-                                length,
-                            );
+                            std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), length);
                             Ok(length)
                         }
                         // buf.copy_from_slice(data.as_bytes());
@@ -125,11 +121,13 @@ pub mod ws_destination {
     use std::io::{Read, Write};
     use std::net::TcpStream;
     use std::os::fd::AsRawFd;
+    use std::time::Duration;
     use tungstenite::client::client;
     use tungstenite::client::IntoClientRequest;
-    use tungstenite::http::Uri;
+    use tungstenite::handshake::MidHandshake;
+    use tungstenite::http::{response, Response, StatusCode, Uri};
     use tungstenite::protocol::{Role, WebSocketContext};
-    use tungstenite::{Message, WebSocket};
+    use tungstenite::{connect, ClientHandshake, Message, WebSocket};
 
     use crate::pipeline_module::pipeline::{PipelineDirection, PipelineStep, PipelineStepType};
 
@@ -178,24 +176,16 @@ pub mod ws_destination {
                 //     .read::<TcpStream>(&mut self.tcp_stream)
                 //     .unwrap();
                 match m {
-                    Message::Text(data) => {
-                        unsafe {
-                            let length = std::cmp::min(data.as_bytes().len(), buf.len());
-                            std::ptr::copy(
-                                data.as_mut_ptr(),
-                                buf.as_mut_ptr(),
-                                data.as_bytes().len(),
-                            );
-                            Ok(length)
-                        }
-                    }
-                    Message::Binary(data) => {
-                        unsafe {
-                            let length = std::cmp::min(data.len(), buf.len());
-                            std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.len());
-                            Ok(length)
-                        }
-                    }
+                    Message::Text(data) => unsafe {
+                        let length = std::cmp::min(data.as_bytes().len(), buf.len());
+                        std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.as_bytes().len());
+                        Ok(length)
+                    },
+                    Message::Binary(data) => unsafe {
+                        let length = std::cmp::min(data.len(), buf.len());
+                        std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.len());
+                        Ok(length)
+                    },
                     Message::Ping(_) | Message::Pong(_) | Message::Close(_) | Message::Frame(_) => {
                         Ok(0)
                     }
@@ -224,21 +214,132 @@ pub mod ws_destination {
         }
     }
 
+    #[allow(unreachable_code)]
     impl WebsocketDestination {
         pub fn new(address: &str) -> Self {
-            let uri: Uri = address.parse::<Uri>().unwrap();
-            let mut addr = String::from(uri.host().unwrap());
-            addr.push_str(":");
-            addr.push_str(uri.port().unwrap().as_str());
-            let connection = TcpStream::connect(addr).unwrap();
+            let mut connection: Option<TcpStream> = None;
+            let mut address = String::from(address);
+            loop {
+                let uri: Uri = address.parse::<Uri>().unwrap();
+                let mut addr = String::from(uri.host().unwrap());
+                addr.push_str(":");
+                addr.push_str(uri.port().unwrap().as_str());
+                connection = Some(TcpStream::connect(addr).unwrap());
+                let req: tungstenite::http::Request<()> = uri.into_client_request().unwrap();
+                let handshake = ClientHandshake::start(connection.as_mut().unwrap(), req, None)
+                    .unwrap()
+                    .handshake();
+                match handshake {
+                    Ok(websocket) => break,
+                    Err(e) => match e {
+                        tungstenite::HandshakeError::Interrupted(mid_handshake) => {
+                            std::thread::sleep(Duration::from_millis(20));
+                            mid_handshake.handshake().unwrap();
+                            break;
+                        }
+                        tungstenite::HandshakeError::Failure(e) => {
+                            match e {
+                                tungstenite::Error::ConnectionClosed => {
+                                    println!("1")
+                                }
+                                tungstenite::Error::AlreadyClosed => {
+                                    println!("1")
+                                }
+                                tungstenite::Error::Io(e) => {
+                                    println!("1")
+                                }
+                                tungstenite::Error::Tls(e) => {
+                                    println!("1")
+                                }
+                                tungstenite::Error::Capacity(e) => {
+                                    println!("1")
+                                }
+                                tungstenite::Error::Protocol(e) => {
+                                    println!("1")
+                                }
+                                tungstenite::Error::WriteBufferFull(e) => {
+                                    println!("1")
+                                }
+                                tungstenite::Error::Utf8 => {
+                                    println!("1")
+                                }
+                                tungstenite::Error::AttackAttempt => {
+                                    println!("1")
+                                }
+                                tungstenite::Error::Url(e) => {
+                                    println!("1")
+                                }
+                                tungstenite::Error::Http(e) => {
+                                    let new_location = e.headers().get("Location").unwrap().to_str().unwrap();
+                                    address = String::from(new_location);
+                                    println!("{new_location}");
+                                    continue;
+                                    // e.headers()
+                                }
+                                tungstenite::Error::HttpFormat(e) => {
+                                    println!("1")
+                                }
+                            }
+                            break;
+                        }
+                    },
+                }
+                // let response = handshake.1;
+                // if response.status() == StatusCode::MOVED_PERMANENTLY {
+                //     let new_location = response
+                //         .headers()
+                //         .get("Location")
+                //         .unwrap()
+                //         .to_str()
+                //         .unwrap();
+                //     println!("{new_location}");
+                //     address = String::from(new_location);
+                //     continue;
+                // } else if response.status() == StatusCode::OK {
+                //     break;
+                // } else {
+                //     panic!("status code : {}", response.status());
+                // }
+            }
+
+            // loop {
+            //     let response = match Response::try_from(&mut connection).await {
+            //         Ok(response) => response,
+            //         Err(_) => break, // Handle connection errors
+            //     };
+
+            //     // if response.status() == StatusCode::MOVED_PERMANENTLY {
+            //     //     // Extract the new location from the Location header
+            //     //     let new_location = response.headers().get("Location").unwrap();
+
+            //     //     // Retry the connection with the new location
+            //     //     let (mut stream, _) = connect(new_location).await?;
+            //     //     continue; // Loop back to check for further redirects
+            //     // } else if response.status().is_success() {
+            //     //     // Upgrade the connection to WebSocket
+            //     //     let mut websocket = WebSocket::from_raw_socket(stream, response.headers())?;
+            //     //     // Proceed with WebSocket communication
+            //     //     break;
+            //     // } else {
+            //     //     // Handle other error responses
+            //     //     break;
+            //     // }
+            // }
+
             // let req = Request::builder().uri(address).body(()).unwrap();
-            let req: tungstenite::http::Request<()> = uri.into_client_request().unwrap();
             // let l = client_with_config(req, connection.try_clone().unwrap(), None).unwrap();
-            client(req, connection.try_clone().unwrap()).unwrap();
+
+            // let l = client(req, connection.try_clone().unwrap()).unwrap();
+            // let mut r = l.1;
+            // while r.status() == StatusCode::MOVED_PERMANENTLY {
+            //     let new_location = r.headers().get("Location").unwrap().to_str().unwrap();
+            //     println!("{new_location}");
+            //     // let (mut stream, _) = connect(new_location);
+            // }
 
             //handle errors
             WebsocketDestination {
-                tcp_stream: connection,
+                tcp_stream: connection.unwrap(),
                 context: WebSocketContext::new(Role::Client, None),
             }
         }
