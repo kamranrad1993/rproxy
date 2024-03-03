@@ -184,9 +184,11 @@ pub mod rustls_wrapper {
 
 #[allow(non_snake_case, unused_variables, dead_code)]
 pub mod ws_destination {
+    use rustls::RootCertStore;
     use std::io::{Read, Write};
     use std::net::TcpStream;
     use std::os::fd::AsRawFd;
+    use std::sync::Arc;
     use std::time::Duration;
     use tungstenite::client::IntoClientRequest;
     use tungstenite::client::{client, uri_mode};
@@ -286,97 +288,6 @@ pub mod ws_destination {
     impl WebsocketDestination {
         pub fn new(address: &str) -> Self {
             let mut connection: Option<TcpStream> = None;
-            // let mut address = String::from(address);
-            // loop {
-            //     let uri: Uri = address.parse::<Uri>().unwrap();
-            //     let mut addr = String::from(uri.host().unwrap());
-            //     let mut port = 0;
-            //     if uri.port() != None {
-            //         port = uri.port().unwrap().as_u16();
-            //     } else {
-            //         port = match uri.scheme_str() {
-            //             Some("ws") | Some("http") => 80,
-            //             Some("wss") | Some("https") => 443,
-            //             None | _ => {
-            //                 panic!("unknow uri scheme")
-            //             }
-            //         };
-            //     }
-            //     addr.push_str(":");
-            //     addr.push_str(port.to_string().as_str());
-            //     connection = Some(TcpStream::connect(addr).unwrap());
-            //     let req: tungstenite::http::Request<()> = uri.clone().into_client_request().unwrap();
-
-            //     if port == 443
-            //         || uri.clone().scheme_str() == Some("wss")
-            //         || uri.clone().scheme_str() == Some("https")
-            //     {
-
-            //         let connection = super::rustls_wrapper::wrap_stream(connection.as_ref().unwrap(), uri.host().unwrap(), tungstenite::stream::Mode::Tls, None).unwrap();
-            //     }
-
-            //     let handshake = ClientHandshake::start(connection.as_mut().unwrap(), req, None)
-            //         .unwrap()
-            //         .handshake();
-            //     match handshake {
-            //         Ok(websocket) => break,
-            //         Err(e) => match e {
-            //             tungstenite::HandshakeError::Interrupted(mid_handshake) => {
-            //                 std::thread::sleep(Duration::from_millis(20));
-            //                 mid_handshake.handshake().unwrap();
-            //                 break;
-            //             }
-            //             tungstenite::HandshakeError::Failure(e) => {
-            //                 match e {
-            //                     tungstenite::Error::ConnectionClosed => {
-            //                         println!("1")
-            //                     }
-            //                     tungstenite::Error::AlreadyClosed => {
-            //                         println!("1")
-            //                     }
-            //                     tungstenite::Error::Io(e) => {
-            //                         println!("1")
-            //                     }
-            //                     tungstenite::Error::Tls(e) => {
-            //                         println!("1")
-            //                     }
-            //                     tungstenite::Error::Capacity(e) => {
-            //                         println!("1")
-            //                     }
-            //                     tungstenite::Error::Protocol(e) => {
-            //                         println!("1")
-            //                     }
-            //                     tungstenite::Error::WriteBufferFull(e) => {
-            //                         println!("1")
-            //                     }
-            //                     tungstenite::Error::Utf8 => {
-            //                         println!("1")
-            //                     }
-            //                     tungstenite::Error::AttackAttempt => {
-            //                         println!("1")
-            //                     }
-            //                     tungstenite::Error::Url(e) => {
-            //                         println!("1")
-            //                     }
-            //                     tungstenite::Error::Http(e) => {
-            //                         let b = e.body().as_ref().unwrap();
-            //                         println!("{}", std::str::from_utf8(b.as_slice()).unwrap());
-            //                         let new_location =
-            //                             e.headers().get("Location").unwrap().to_str().unwrap();
-            //                         address = String::from(new_location);
-            //                         println!("{new_location}");
-            //                         continue;
-            //                         // e.headers()
-            //                     }
-            //                     tungstenite::Error::HttpFormat(e) => {
-            //                         println!("1")
-            //                     }
-            //                 }
-            //                 break;
-            //             }
-            //         },
-            //     }
-            // }
 
             let uri: Uri = address.parse::<Uri>().unwrap();
             let mut addr = String::from(uri.host().unwrap());
@@ -439,15 +350,16 @@ pub mod ws_destination {
                 let req: tungstenite::http::Request<()> =
                     uri.clone().into_client_request().unwrap();
 
-                    let l = connection.as_ref().as_deref().unwrap().try_clone().unwrap();
-                    tls_connection = Some(super::rustls_wrapper::wrap_stream(
+                let l = connection.as_ref().as_deref().unwrap().try_clone().unwrap();
+                tls_connection = Some(
+                    super::rustls_wrapper::wrap_stream(
                         l,
                         uri.host().unwrap(),
                         tungstenite::stream::Mode::Tls,
                         None,
                     )
-                    .unwrap());
-                
+                    .unwrap(),
+                );
 
                 let handshake = ClientHandshake::start(tls_connection.as_mut().unwrap(), req, None)
                     .unwrap()
@@ -463,34 +375,34 @@ pub mod ws_destination {
                         tungstenite::HandshakeError::Failure(e) => {
                             match e {
                                 tungstenite::Error::ConnectionClosed => {
-                                    println!("1")
+                                    println!("{}", e)
                                 }
                                 tungstenite::Error::AlreadyClosed => {
-                                    println!("1")
+                                    println!("{}", e)
                                 }
                                 tungstenite::Error::Io(e) => {
-                                    println!("1")
+                                    println!("{}", e)
                                 }
                                 tungstenite::Error::Tls(e) => {
-                                    println!("1")
+                                    println!("{}", e)
                                 }
                                 tungstenite::Error::Capacity(e) => {
-                                    println!("1")
+                                    println!("{}", e)
                                 }
                                 tungstenite::Error::Protocol(e) => {
-                                    println!("1")
+                                    println!("{}", e)
                                 }
                                 tungstenite::Error::WriteBufferFull(e) => {
-                                    println!("1")
+                                    println!("{}", e)
                                 }
                                 tungstenite::Error::Utf8 => {
-                                    println!("1")
+                                    println!("{}", e)
                                 }
                                 tungstenite::Error::AttackAttempt => {
-                                    println!("1")
+                                    println!("{}", e)
                                 }
                                 tungstenite::Error::Url(e) => {
-                                    println!("1")
+                                    println!("{}", e)
                                 }
                                 tungstenite::Error::Http(e) => {
                                     let b = e.body().as_ref().unwrap();
@@ -503,7 +415,7 @@ pub mod ws_destination {
                                     // e.headers()
                                 }
                                 tungstenite::Error::HttpFormat(e) => {
-                                    println!("1")
+                                    println!("{}", e)
                                 }
                             }
                             break;
@@ -518,5 +430,25 @@ pub mod ws_destination {
                 tls_stream: tls_connection,
             }
         }
+    }
+
+    fn convert_tls<T: Read + Write + AsRawFd>(stream: TcpStream, uri: Uri) -> Box<dyn &'static mut T>
+    {
+        let root_store = RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+        let mut config = rustls::ClientConfig::builder()
+            .with_root_certificates(root_store)
+            .with_no_client_auth();
+        config.key_log = Arc::new(rustls::KeyLogFile::new());
+        config.dangerous().set_certificate_verifier(
+            rustls::client::WebPkiServerVerifier::builder(Arc::new(root_store))
+                .allow_unknown_revocation_status()
+                .build()
+                .unwrap(),
+        );
+        let server_name = uri.host().unwrap().try_into().unwrap();
+        let mut conn = rustls::ClientConnection::new(Arc::new(config), server_name).unwrap();
+        let tls = rustls::Stream::new(&mut conn, &mut stream);
+        let s = tls.sock;
+        return Box::new(tls.sock); 
     }
 }
