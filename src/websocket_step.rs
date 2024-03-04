@@ -116,75 +116,76 @@ pub mod ws_source {
     }
 }
 
-pub mod rustls_wrapper {
-    use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned};
-    use rustls_pki_types::ServerName;
+// pub mod rustls_wrapper {
+//     use rustls::{ClientConfig, ClientConnection, RootCertStore, StreamOwned};
+//     use rustls_pki_types::ServerName;
 
-    use std::{
-        convert::TryFrom,
-        io::{Read, Write},
-        sync::Arc,
-    };
+//     use std::{
+//         convert::TryFrom,
+//         io::{Read, Write},
+//         sync::Arc,
+//     };
 
-    use tungstenite::{
-        error::TlsError,
-        stream::{MaybeTlsStream, Mode},
-        Result,
-    };
+//     use tungstenite::{
+//         error::TlsError,
+//         stream::{MaybeTlsStream, Mode},
+//         Result,
+//     };
 
-    pub fn wrap_stream<S>(
-        socket: S,
-        domain: &str,
-        mode: Mode,
-        tls_connector: Option<Arc<ClientConfig>>,
-    ) -> Result<MaybeTlsStream<S>>
-    where
-        S: Read + Write,
-    {
-        match mode {
-            Mode::Plain => Ok(MaybeTlsStream::Plain(socket)),
-            Mode::Tls => {
-                let config = match tls_connector {
-                    Some(config) => config,
-                    None => {
-                        #[allow(unused_mut)]
-                        let mut root_store = RootCertStore::empty();
+//     pub fn wrap_stream<S>(
+//         socket: S,
+//         domain: &str,
+//         mode: Mode,
+//         tls_connector: Option<Arc<ClientConfig>>,
+//     ) -> Result<MaybeTlsStream<S>>
+//     where
+//         S: Read + Write,
+//     {
+//         match mode {
+//             Mode::Plain => Ok(MaybeTlsStream::Plain(socket)),
+//             Mode::Tls => {
+//                 let config = match tls_connector {
+//                     Some(config) => config,
+//                     None => {
+//                         #[allow(unused_mut)]
+//                         let mut root_store = RootCertStore::empty();
 
-                        #[cfg(feature = "rustls-tls-native-roots")]
-                        {
-                            let native_certs = rustls_native_certs::load_native_certs()?;
-                            let total_number = native_certs.len();
-                            let (number_added, number_ignored) =
-                                root_store.add_parsable_certificates(native_certs);
-                            log::debug!("Added {number_added}/{total_number} native root certificates (ignored {number_ignored})");
-                        }
-                        #[cfg(feature = "rustls-tls-webpki-roots")]
-                        {
-                            root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-                        }
+//                         #[cfg(feature = "rustls-tls-native-roots")]
+//                         {
+//                             let native_certs = rustls_native_certs::load_native_certs()?;
+//                             let total_number = native_certs.len();
+//                             let (number_added, number_ignored) =
+//                                 root_store.add_parsable_certificates(native_certs);
+//                             log::debug!("Added {number_added}/{total_number} native root certificates (ignored {number_ignored})");
+//                         }
+//                         #[cfg(feature = "rustls-tls-webpki-roots")]
+//                         {
+//                             root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+//                         }
 
-                        Arc::new(
-                            ClientConfig::builder()
-                                .with_root_certificates(root_store)
-                                .with_no_client_auth(),
-                        )
-                    }
-                };
-                let domain = ServerName::try_from(domain)
-                    .map_err(|_| TlsError::InvalidDnsName)?
-                    .to_owned();
-                let client = ClientConnection::new(config, domain).map_err(TlsError::Rustls)?;
-                let stream = StreamOwned::new(client, socket);
+//                         Arc::new(
+//                             ClientConfig::builder()
+//                                 .with_root_certificates(root_store)
+//                                 .with_no_client_auth(),
+//                         )
+//                     }
+//                 };
+//                 let domain = ServerName::try_from(domain)
+//                     .map_err(|_| TlsError::InvalidDnsName)?
+//                     .to_owned();
+//                 let client = ClientConnection::new(config, domain).map_err(TlsError::Rustls)?;
+//                 let stream = StreamOwned::new(client, socket);
 
-                Ok(MaybeTlsStream::Rustls(stream))
-            }
-        }
-    }
-}
+//                 Ok(MaybeTlsStream::Rustls(stream))
+//             }
+//         }
+//     }
+// }
 
 #[allow(non_snake_case, unused_variables, dead_code)]
 pub mod ws_destination {
-    use rustls::RootCertStore;
+    use base64::write;
+    use rustls::{ClientConnection, Connection, RootCertStore};
     use std::io::{Read, Write};
     use std::net::TcpStream;
     use std::os::fd::AsRawFd;
@@ -200,10 +201,43 @@ pub mod ws_destination {
 
     use crate::pipeline_module::pipeline::{PipelineDirection, PipelineStep, PipelineStepType};
 
+    // pub struct WebsocketDestination {
+    //     tcp_stream: TcpStream,
+    //     context: WebSocketContext,
+    //     // tls_stream: Option<MaybeTlsStream<TcpStream>>,
+    // }
+
+    struct ClientConnectionWrapper {
+        object: ClientConnection,
+    }
+
+    impl Read for ClientConnectionWrapper {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            self.object.reader().read(buf)
+        }
+    }
+
+    impl Write for ClientConnectionWrapper {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.object.writer().write(buf)
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            self.object.writer().flush()
+        }
+    }
+
+    pub enum Stream {
+        tcp_stream(TcpStream),
+        tls_connection(ClientConnectionWrapper),
+    }
+
     pub struct WebsocketDestination {
-        tcp_stream: TcpStream,
+        // tcp_stream: TcpStream,
+        stream: Stream,
+        fd: usize,
         context: WebSocketContext,
-        tls_stream: Option<MaybeTlsStream<TcpStream>>,
+        // tls_stream: Option<MaybeTlsStream<TcpStream>>,
     }
 
     impl PipelineStep for WebsocketDestination {
@@ -214,7 +248,7 @@ pub mod ws_destination {
         fn len(&self) -> std::io::Result<usize> {
             let mut available: usize = 0;
             let result: i32 =
-                unsafe { libc::ioctl(self.tcp_stream.as_raw_fd(), libc::FIONREAD, &mut available) };
+                unsafe { libc::ioctl(self.fd as i32, libc::FIONREAD, &mut available) };
             if result == -1 {
                 let errno = std::io::Error::last_os_error();
                 Err(errno)
@@ -232,7 +266,7 @@ pub mod ws_destination {
         fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
             let mut available: usize = 0;
             let result: i32 =
-                unsafe { libc::ioctl(self.tcp_stream.as_raw_fd(), libc::FIONREAD, &mut available) };
+                unsafe { libc::ioctl(self.fd as i32, libc::FIONREAD, &mut available) };
 
             if result == -1 {
                 let errno = std::io::Error::last_os_error();
@@ -240,12 +274,21 @@ pub mod ws_destination {
             } else if available == 0 {
                 Ok(0)
             } else {
-                let m = &mut self.get_websocket().read().unwrap();
+                // let m = &mut self.get_websocket().read().unwrap();
+                let mut m: Option<Message> = None;
+                match &mut self.stream {
+                    Stream::tcp_stream(s) => {
+                        m = Some(self.context.read(s).unwrap());
+                    }
+                    Stream::tls_connection(c) => {
+                        m = Some(self.context.read(c).unwrap());
+                    }
+                }
                 // let mut m = &mut self
                 //     .context
                 //     .read::<TcpStream>(&mut self.tcp_stream)
                 //     .unwrap();
-                match m {
+                match &mut m.unwrap() {
                     Message::Text(data) => unsafe {
                         let length = std::cmp::min(data.as_bytes().len(), buf.len());
                         std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.as_bytes().len());
@@ -269,17 +312,40 @@ pub mod ws_destination {
         fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
             let vec = Vec::from(buf);
             let msg = Message::Binary(vec);
-            let result = self.get_websocket().send(msg);
-            match result {
-                Ok(_) => Ok(buf.len()),
-                Err(error) => {
-                    panic!("{}", error);
+            // let result = self.get_websocket().send(msg);
+
+            let m: Option<Message> = None;
+            match &mut self.stream {
+                Stream::tcp_stream(s) => {
+                    let result = self.context.write(s, msg);
+                    match result {
+                        Ok(_) => Ok(buf.len()),
+                        Err(error) => {
+                            panic!("{}", error);
+                        }
+                    }
+                }
+                Stream::tls_connection(c) => {
+                    let result = self.context.write(c, msg);
+                    match result {
+                        Ok(_) => Ok(buf.len()),
+                        Err(error) => {
+                            panic!("{}", error);
+                        }
+                    }
                 }
             }
+
+            // match result {
+            //     Ok(_) => Ok(buf.len()),
+            //     Err(error) => {
+            //         panic!("{}", error);
+            //     }
+            // }
         }
 
         fn flush(&mut self) -> std::io::Result<()> {
-            self.get_websocket().flush().unwrap();
+            // self.get_websocket().flush().unwrap();
             Ok(())
         }
     }
@@ -315,19 +381,23 @@ pub mod ws_destination {
 
             //handle errors
             WebsocketDestination {
-                tcp_stream: connection,
+                // tcp_stream: connection,
+                stream: Stream::tcp_stream(connection.try_clone().unwrap()),
+                fd: connection.as_raw_fd() as usize,
                 context: WebSocketContext::new(Role::Client, None),
-                tls_stream: None,
+                // tls_stream: None,
             }
         }
 
-        pub fn get_websocket(&self) -> WebSocket<TcpStream> {
-            WebSocket::from_raw_socket(self.tcp_stream.try_clone().unwrap(), Role::Client, None)
-        }
+        // pub fn get_websocket(&self) -> WebSocket<TcpStream> {
+        //     WebSocket::from
+        //     WebSocket::from_raw_socket(self.tcp_stream.try_clone().unwrap(), Role::Client, None)
+        // }
 
         pub fn new_tls(address: &str) -> Self {
-            let mut connection: Option<TcpStream> = None;
-            let mut tls_connection: Option<MaybeTlsStream<TcpStream>> = None;
+            let mut tcp_stream: Option<TcpStream> = None;
+            let mut tls_stream: Option<TcpStream> = None;
+            let mut tls_connection: Option<ClientConnection> = None;
             let mut address = String::from(address);
             loop {
                 let uri: Uri = address.parse::<Uri>().unwrap();
@@ -346,22 +416,25 @@ pub mod ws_destination {
                 }
                 addr.push_str(":");
                 addr.push_str(port.to_string().as_str());
-                connection = Some(TcpStream::connect(addr).unwrap());
+                tcp_stream = Some(TcpStream::connect(addr).unwrap());
                 let req: tungstenite::http::Request<()> =
                     uri.clone().into_client_request().unwrap();
 
-                let l = connection.as_ref().as_deref().unwrap().try_clone().unwrap();
-                tls_connection = Some(
-                    super::rustls_wrapper::wrap_stream(
-                        l,
-                        uri.host().unwrap(),
-                        tungstenite::stream::Mode::Tls,
-                        None,
-                    )
-                    .unwrap(),
-                );
+                let l = tcp_stream.as_ref().as_deref().unwrap().try_clone().unwrap();
+                let result = convert_tls(l, String::from(uri.host().unwrap()));
+                tls_stream= Some(result.0);
+                tls_connection = Some(result.1);
+                // tls_connection = Some(
+                //     super::rustls_wrapper::wrap_stream(
+                //         l,
+                //         uri.host().unwrap(),
+                //         tungstenite::stream::Mode::Tls,
+                //         None,
+                //     )
+                //     .unwrap(),
+                // );
 
-                let handshake = ClientHandshake::start(tls_connection.as_mut().unwrap(), req, None)
+                let handshake = ClientHandshake::start(tls_stream.as_ref().unwrap(), req, None)
                     .unwrap()
                     .handshake();
                 match handshake {
@@ -424,31 +497,39 @@ pub mod ws_destination {
                 }
             }
 
+
             WebsocketDestination {
-                tcp_stream: connection.unwrap(),
+                stream: Stream::tls_connection(ClientConnectionWrapper {
+                    object: tls_connection.unwrap(),
+                }),
+                fd: tls_stream.as_ref().unwrap().as_raw_fd() as usize,
                 context: WebSocketContext::new(Role::Client, None),
-                tls_stream: tls_connection,
+                // tls_stream: tls_connection,
             }
         }
     }
 
-    fn convert_tls<T: Read + Write + AsRawFd>(stream: TcpStream, uri: Uri) -> Box<dyn &'static mut T>
-    {
-        let root_store = RootCertStore::from_iter(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+    fn convert_tls(mut stream: TcpStream, host: String) -> (TcpStream, ClientConnection) {
+        let root_store = Arc::new(RootCertStore::from_iter(
+            webpki_roots::TLS_SERVER_ROOTS.iter().cloned(),
+        ));
         let mut config = rustls::ClientConfig::builder()
-            .with_root_certificates(root_store)
+            .with_root_certificates(root_store.as_ref().clone())
             .with_no_client_auth();
         config.key_log = Arc::new(rustls::KeyLogFile::new());
         config.dangerous().set_certificate_verifier(
-            rustls::client::WebPkiServerVerifier::builder(Arc::new(root_store))
+            rustls::client::WebPkiServerVerifier::builder(root_store)
                 .allow_unknown_revocation_status()
                 .build()
                 .unwrap(),
         );
-        let server_name = uri.host().unwrap().try_into().unwrap();
+        let server_name = host.try_into().unwrap();
         let mut conn = rustls::ClientConnection::new(Arc::new(config), server_name).unwrap();
         let tls = rustls::Stream::new(&mut conn, &mut stream);
-        let s = tls.sock;
-        return Box::new(tls.sock); 
+        let s = tls.sock.try_clone().unwrap();
+        let c = *tls.conn;
+        // ClientConnection::new(tls.conn., name)
+        // tls.conn.complete_io(io)
+        return (s, c);
     }
 }
