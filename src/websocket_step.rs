@@ -509,7 +509,7 @@ pub mod ws_destination {
         }
     }
 
-    fn convert_tls(mut stream: TcpStream, host: String) -> (TcpStream, ClientConnection) {
+    fn convert_tls(mut stream: TcpStream, host: String) -> (TcpStream, Box<ClientConnection>) {
         let root_store = Arc::new(RootCertStore::from_iter(
             webpki_roots::TLS_SERVER_ROOTS.iter().cloned(),
         ));
@@ -527,7 +527,7 @@ pub mod ws_destination {
         let mut conn = rustls::ClientConnection::new(Arc::new(config), server_name).unwrap();
         let tls = rustls::Stream::new(&mut conn, &mut stream);
         let s = tls.sock.try_clone().unwrap();
-        let c = *tls.conn;
+        let c = Box::new(*tls.conn);
         // ClientConnection::new(tls.conn., name)
         // tls.conn.complete_io(io)
         return (s, c);
