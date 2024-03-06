@@ -201,12 +201,6 @@ pub mod ws_destination {
 
     use crate::pipeline_module::pipeline::{PipelineDirection, PipelineStep, PipelineStepType};
 
-    // pub struct WebsocketDestination {
-    //     tcp_stream: TcpStream,
-    //     context: WebSocketContext,
-    //     // tls_stream: Option<MaybeTlsStream<TcpStream>>,
-    // }
-
     struct ClientConnectionWrapper {
         object: ClientConnection,
     }
@@ -398,6 +392,7 @@ pub mod ws_destination {
             let mut tcp_stream: Option<TcpStream> = None;
             let mut tls_stream: Option<TcpStream> = None;
             let mut tls_connection: Option<ClientConnection> = None;
+            // let mut tls : (Option<TcpStream>, Option<&'static mut ClientConnection>) = (None, None);
             let mut address = String::from(address);
             loop {
                 let uri: Uri = address.parse::<Uri>().unwrap();
@@ -420,10 +415,35 @@ pub mod ws_destination {
                 let req: tungstenite::http::Request<()> =
                     uri.clone().into_client_request().unwrap();
 
-                let l = tcp_stream.as_ref().as_deref().unwrap().try_clone().unwrap();
-                let result = convert_tls(l, String::from(uri.host().unwrap()));
-                tls_stream= Some(result.0);
-                tls_connection = Some(result.1);
+                let mut l = tcp_stream.as_ref().as_deref().unwrap().try_clone().unwrap();
+                let root_store = Arc::new(RootCertStore::from_iter(
+                    webpki_roots::TLS_SERVER_ROOTS.iter().cloned(),
+                ));
+                let mut config = rustls::ClientConfig::builder()
+                    .with_root_certificates(root_store.as_ref().clone())
+                    .with_no_client_auth();
+                config.key_log = Arc::new(rustls::KeyLogFile::new());
+                config.dangerous().set_certificate_verifier(
+                    rustls::client::WebPkiServerVerifier::builder(root_store)
+                        .allow_unknown_revocation_status()
+                        .build()
+                        .unwrap(),
+                );
+                let host = String::from(uri.host().unwrap());
+                let server_name = host.try_into().unwrap();
+                let mut conn = rustls::ClientConnection::new(Arc::new(config), server_name).unwrap();
+                let tls = rustls::Stream::new(&mut conn, tcp_stream.as_mut().unwrap());
+                let mut s = tls.sock.try_clone().unwrap();
+                let mut c = tls.conn;
+                let mut c_wrapper = ClientConnectionWrapper {
+                    object: c,
+                };
+                // let l = c.write_tls(&mut s);
+                // let l = c.read_tls(&mut s);
+                // let l = c.complete_io(&mut s);
+
+
+                // convert_tls(&'static mut l, String::from(uri.host().unwrap()), tls);
                 // tls_connection = Some(
                 //     super::rustls_wrapper::wrap_stream(
                 //         l,
@@ -434,7 +454,7 @@ pub mod ws_destination {
                 //     .unwrap(),
                 // );
 
-                let handshake = ClientHandshake::start(tls_stream.as_ref().unwrap(), req, None)
+                let handshake = ClientHandshake::start(c_wrapper, req, None)
                     .unwrap()
                     .handshake();
                 match handshake {
@@ -497,39 +517,15 @@ pub mod ws_destination {
                 }
             }
 
-
             WebsocketDestination {
                 stream: Stream::tls_connection(ClientConnectionWrapper {
                     object: tls_connection.unwrap(),
                 }),
-                fd: tls_stream.as_ref().unwrap().as_raw_fd() as usize,
+                fd: tls_stream.as_mut().unwrap().as_raw_fd() as usize,
                 context: WebSocketContext::new(Role::Client, None),
                 // tls_stream: tls_connection,
             }
         }
     }
 
-    fn convert_tls(mut stream: TcpStream, host: String) -> (TcpStream, Box<ClientConnection>) {
-        let root_store = Arc::new(RootCertStore::from_iter(
-            webpki_roots::TLS_SERVER_ROOTS.iter().cloned(),
-        ));
-        let mut config = rustls::ClientConfig::builder()
-            .with_root_certificates(root_store.as_ref().clone())
-            .with_no_client_auth();
-        config.key_log = Arc::new(rustls::KeyLogFile::new());
-        config.dangerous().set_certificate_verifier(
-            rustls::client::WebPkiServerVerifier::builder(root_store)
-                .allow_unknown_revocation_status()
-                .build()
-                .unwrap(),
-        );
-        let server_name = host.try_into().unwrap();
-        let mut conn = rustls::ClientConnection::new(Arc::new(config), server_name).unwrap();
-        let tls = rustls::Stream::new(&mut conn, &mut stream);
-        let s = tls.sock.try_clone().unwrap();
-        let c = Box::new(*tls.conn);
-        // ClientConnection::new(tls.conn., name)
-        // tls.conn.complete_io(io)
-        return (s, c);
-    }
 }
