@@ -1,4 +1,4 @@
-use proxy::{Base64, Pipeline, PipelineStep, STDioStep, WebsocketDestination, WebsocketSource};
+use proxy::{Base64, Pipeline, PipelineStep, STDioStep, WebsocketDestination, WebsocketSource, WssDestination};
 use std::time::Duration;
 
 const USAGE: &'static str = "
@@ -41,7 +41,7 @@ fn main() {
             }
             Some("ws-l") => forward_steps.push(Box::new(WebsocketSource::new(step.as_str()))),
             Some("ws") => forward_steps.push(Box::new(WebsocketDestination::new(step.as_str()))),
-            Some("wss") => forward_steps.push(Box::new(WebsocketDestination::new_tls(step.as_str()))),
+            Some("wss") => forward_steps.push(Box::new(WssDestination::new(step.as_str()))),
             Some("b64") => forward_steps.push(Box::new(Base64::new(config))),
             None | _ => {
                 print!("unknown step : {}", step);
