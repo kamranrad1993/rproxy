@@ -25,6 +25,7 @@ pub mod pipeline {
         Middle = 0x02,
         Destination = 0x04,
         SourceAndDest = 0x05,
+        Forkable_Source = 0x08,
     }
 
     pub enum PipelineDirection {
@@ -68,6 +69,7 @@ pub mod pipeline {
                 0x02 => PipelineStepType::Middle,
                 0x04 => PipelineStepType::Destination,
                 0x05 => PipelineStepType::SourceAndDest,
+                0x08 => PipelineStepType::Forkable_Source,
                 _ => panic!("Invalid combination of flags"),
             }
         }
@@ -79,13 +81,14 @@ pub mod pipeline {
         }
     }
 
-    impl Display for PipelineStepType{
+    impl Display for PipelineStepType {
         fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
             match self {
                 PipelineStepType::Source => write!(f, "PipelineStepType::Source"),
                 PipelineStepType::Middle => write!(f, "PipelineStepType::Middle"),
                 PipelineStepType::Destination => write!(f, "PipelineStepType::Destination"),
                 PipelineStepType::SourceAndDest => write!(f, "PipelineStepType::SourceAndDest"),
+                PipelineStepType::Forkable_Source => write!(f, "PipelineStepType::Forkable_Source"),
             }
         }
     }
@@ -94,6 +97,7 @@ pub mod pipeline {
         fn get_step_type(&self) -> PipelineStepType;
         fn len(&self) -> std::io::Result<usize>;
         fn set_pipeline_direction(&mut self, direction: PipelineDirection);
+        fn fork(&mut self) -> Result<Box<dyn PipelineStep>, ()>;
     }
 
     pub struct Pipeline {
@@ -126,6 +130,8 @@ pub mod pipeline {
                 )))
             } else if steps.first().unwrap().get_step_type() & PipelineStepType::Source
                 != PipelineStepType::Source
+                || steps.first().unwrap().get_step_type() & PipelineStepType::Forkable_Source
+                    != PipelineStepType::Forkable_Source
             {
                 Err(IOError::InvalidStep(format!(
                     "First step type must be PipelineStepType::Source."
@@ -161,7 +167,8 @@ pub mod pipeline {
             }
 
             for i in 0..self.steps.len() - 1 {
-                let mut size = std::cmp::min(self.buffer_size.unwrap(), self.steps[i].len().unwrap());
+                let mut size =
+                    std::cmp::min(self.buffer_size.unwrap(), self.steps[i].len().unwrap());
                 let mut data: Vec<u8> = vec![0; size];
                 // self.steps[i].set_pipeline_direction(PipelineDirection::Forward);
                 size = self.steps[i].read(data.as_mut_slice()).unwrap();
@@ -180,7 +187,8 @@ pub mod pipeline {
             }
 
             for i in (1..self.steps.len()).rev() {
-                let mut size = std::cmp::min(self.buffer_size.unwrap(), self.steps[i].len().unwrap());
+                let mut size =
+                    std::cmp::min(self.buffer_size.unwrap(), self.steps[i].len().unwrap());
                 let mut data: Vec<u8> = vec![0; size];
                 // self.steps[i].set_pipeline_direction(PipelineDirection::Backward);
                 size = self.steps[i].read(data.as_mut_slice()).unwrap();

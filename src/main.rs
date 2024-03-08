@@ -1,4 +1,4 @@
-use proxy::{Base64, Pipeline, PipelineStep, STDioStep, WebsocketDestination, WebsocketSource, WssDestination};
+use proxy::{Base64, Pipeline, PipelineStep, STDioStep, WebsocketDestination, WebsocketSource, WssDestination, PipelineStepType};
 use std::time::Duration;
 
 const USAGE: &'static str = "
@@ -23,7 +23,7 @@ fn main() {
         std::process::exit(0);
     }
 
-    let mut forward_steps: Vec<Box<dyn PipelineStep>> = Vec::new();
+    let mut steps: Vec<Box<dyn PipelineStep>> = Vec::new();
     loop {
         let step = pargs.opt_value_from_str::<&str, String>("-s").unwrap();
         if step == None {
@@ -37,12 +37,12 @@ fn main() {
         let config = Some(res.get(1).unwrap().as_str());
         match protocol {
             Some("stdio") => {
-                forward_steps.push(Box::new(STDioStep::new()));
+                steps.push(Box::new(STDioStep::new()));
             }
-            Some("ws-l") => forward_steps.push(Box::new(WebsocketSource::new(step.as_str()))),
-            Some("ws") => forward_steps.push(Box::new(WebsocketDestination::new(step.as_str()))),
-            Some("wss") => forward_steps.push(Box::new(WssDestination::new(step.as_str()))),
-            Some("b64") => forward_steps.push(Box::new(Base64::new(config))),
+            Some("ws-l") => steps.push(Box::new(WebsocketSource::new(step.as_str()))),
+            Some("ws") => steps.push(Box::new(WebsocketDestination::new(step.as_str()))),
+            Some("wss") => steps.push(Box::new(WssDestination::new(step.as_str()))),
+            Some("b64") => steps.push(Box::new(Base64::new(config))),
             None | _ => {
                 print!("unknown step : {}", step);
             }
@@ -54,7 +54,14 @@ fn main() {
         eprintln!("Warning: unused arguments left: {:?}.", remaining);
     }
 
-    let mut pipeline = Pipeline::new(forward_steps, Some(1024)).unwrap();
+    let l = steps[0];
+    let mut pipeline = Pipeline::new(steps, Some(1024)).unwrap();
+    if l.get_step_type() == PipelineStepType::Forkable_Source
+    {
+
+    }else {
+        
+    }
     #[allow(while_true)]
     while true {
         pipeline.read_source().unwrap();

@@ -25,6 +25,10 @@ pub mod io_step {
         fn set_pipeline_direction (&mut self, direction: PipelineDirection){
             
         }
+
+        fn fork(&mut self) -> Result<Box<dyn PipelineStep>, ()> {
+            Err(())
+        }
     }
 
     impl Default for STDioStep {

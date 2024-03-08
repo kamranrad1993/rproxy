@@ -37,6 +37,10 @@ pub mod base64 {
         fn set_pipeline_direction(&mut self, direction: PipelineDirection) {
             self.pipeline_direction = direction;
         }
+
+        fn fork(&mut self) -> Result<Box<dyn PipelineStep>, ()> {
+            Err(())
+        }
     }
 
     impl Read for Base64 {
