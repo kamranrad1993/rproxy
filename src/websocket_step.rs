@@ -104,6 +104,10 @@ pub mod ws_source {
                 self.get_step_type(),
             )))
         }
+
+        fn start(&self) {
+            
+        }
     }
 
     impl WebsocketSource {
@@ -167,6 +171,10 @@ pub mod ws_destination {
 
         fn fork(&mut self) -> Result<Box<dyn PipelineStep>, ()> {
             Err(())
+        }
+
+        fn start(&self) {
+            
         }
     }
 
@@ -364,6 +372,10 @@ pub mod wss_destination {
 
         fn fork(&mut self) -> Result<Box<dyn PipelineStep>, ()> {
             Err(())
+        }
+
+        fn start(&self) {
+            
         }
     }
 

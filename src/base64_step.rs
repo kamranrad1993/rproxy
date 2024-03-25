@@ -10,13 +10,13 @@ pub mod base64 {
         },
         Engine as _,
     };
-    use std::io::{Read, Write};
+    use std::{io::{Read, Write}, collections::VecDeque};
 
     pub const B64_ENGINE: GeneralPurpose = GeneralPurpose::new(&alphabet::BIN_HEX, NO_PAD);
     pub const NEW_LINE: &[u8] = &[b'\n'; 1];
     pub struct Base64 {
-        forward_buffer: Vec<u8>,
-        backward_buffer: Vec<u8>,
+        forward_buffer: VecDeque<u8>,
+        backward_buffer: VecDeque<u8>,
         work_mode: PipelineDirection,
         pipeline_direction: PipelineDirection,
     }
@@ -41,6 +41,18 @@ pub mod base64 {
         fn fork(&mut self) -> Result<Box<dyn PipelineStep>, ()> {
             Err(())
         }
+
+        fn start(&self) {
+            
+        }
+    }
+
+    impl Copy for Base64 {
+        
+    }
+
+    impl Clone for Base64 {
+
     }
 
     impl Read for Base64 {

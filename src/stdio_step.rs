@@ -29,6 +29,10 @@ pub mod io_step {
         fn fork(&mut self) -> Result<Box<dyn PipelineStep>, ()> {
             Err(())
         }
+
+        fn start(&self) {
+            
+        }
     }
 
     impl Default for STDioStep {

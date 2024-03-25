@@ -54,14 +54,8 @@ fn main() {
         eprintln!("Warning: unused arguments left: {:?}.", remaining);
     }
 
-    let l = steps[0];
     let mut pipeline = Pipeline::new(steps, Some(1024)).unwrap();
-    if l.get_step_type() == PipelineStepType::Forkable_Source
-    {
 
-    }else {
-        
-    }
     #[allow(while_true)]
     while true {
         pipeline.read_source().unwrap();
