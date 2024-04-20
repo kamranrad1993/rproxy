@@ -15,8 +15,8 @@ pub mod base64 {
     pub const B64_ENGINE: GeneralPurpose = GeneralPurpose::new(&alphabet::BIN_HEX, NO_PAD);
     pub const NEW_LINE: &[u8] = &[b'\n'; 1];
     pub struct Base64 {
-        forward_buffer: VecDeque<u8>,
-        backward_buffer: VecDeque<u8>,
+        forward_buffer: Vec<u8>,
+        backward_buffer: Vec<u8>,
         work_mode: PipelineDirection,
         pipeline_direction: PipelineDirection,
     }
@@ -46,15 +46,7 @@ pub mod base64 {
             
         }
     }
-
-    impl Copy for Base64 {
-        
-    }
-
-    impl Clone for Base64 {
-
-    }
-
+    
     impl Read for Base64 {
         fn read(&mut self, mut buf: &mut [u8]) -> std::io::Result<usize> {
             match self.pipeline_direction {

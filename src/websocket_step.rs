@@ -317,7 +317,7 @@ pub mod wss_destination {
             let connection = TcpStream::connect(addr.clone()).unwrap();
 
             let mut ssl_connector_builder: SslConnectorBuilder =
-                SslConnector::builder(SslMethod::tls()).unwrap();
+                SslConnector::ConnectConfigurationbuilder(SslMethod::tls()).unwrap();
             // ssl_connector_builder.set_verify(SslVerifyMode::NONE);
             // ssl_connector_builder.set_verify_callback(SslVerifyMode::NONE, |r, context|{
             //     true

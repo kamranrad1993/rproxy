@@ -93,7 +93,7 @@ pub mod pipeline {
         }
     }
 
-    pub trait PipelineStep: Read + Write + Send + Sync + Copy + Clone {
+    pub trait PipelineStep: Read + Write + Send + Sync {
         fn start(&self);
         fn get_step_type(&self) -> PipelineStepType;
         fn len(&self) -> std::io::Result<usize>;
