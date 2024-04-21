@@ -1,14 +1,10 @@
 pub mod io_step {
-    use crate::pipeline_module::pipeline::{PipelineStep, PipelineStepType, PipelineDirection};
+    use crate::pipeline_module::pipeline::{PipelineStep, PipelineDirection};
     use std::io::{stdin, stdout, Read, Write};
 
     pub struct STDioStep {}
 
     impl PipelineStep for STDioStep {
-        fn get_step_type(&self) -> PipelineStepType {
-            PipelineStepType::SourceAndDest
-        }
-
         fn len(&self) -> std::io::Result<usize> {
             let mut available: usize = 0;
             let result: i32 =
@@ -24,10 +20,6 @@ pub mod io_step {
         #[allow(unused_variables)]
         fn set_pipeline_direction (&mut self, direction: PipelineDirection){
             
-        }
-
-        fn fork(&mut self) -> Result<Box<dyn PipelineStep>, ()> {
-            Err(())
         }
 
         fn start(&self) {

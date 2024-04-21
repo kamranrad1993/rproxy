@@ -1,8 +1,6 @@
 pub mod stream_step {
     use std::marker::{Send, Sync};
     use std::{io::Read, io::Write, os::fd::AsRawFd};
-
-    use crate::pipeline_module::pipeline::PipelineStepType;
     use crate::{PipelineDirection, PipelineStep};
 
     pub struct StreamStep<T>
@@ -10,7 +8,6 @@ pub mod stream_step {
         T: Read + Write + AsRawFd + Send + Sync,
     {
         stream: T,
-        step_type: PipelineStepType,
         pipeline_direction: PipelineDirection,
     }
 
@@ -18,10 +15,9 @@ pub mod stream_step {
     where
         T: Read + Write + AsRawFd + Send + Sync,
     {
-        pub fn new(stream: T, step_type: PipelineStepType) -> Self {
+        pub fn new(stream: T) -> Self {
             Self {
                 stream: stream,
-                step_type: step_type,
                 pipeline_direction: PipelineDirection::Forward,
             }
         }
@@ -31,10 +27,6 @@ pub mod stream_step {
     where
         T: Read + Write + AsRawFd + Send + Sync,
     {
-        fn get_step_type(&self) -> PipelineStepType {
-            self.step_type
-        }
-
         fn len(&self) -> std::io::Result<usize> {
             let mut available: usize = 0;
             let result: i32 =
@@ -50,11 +42,7 @@ pub mod stream_step {
         fn set_pipeline_direction(&mut self, direction: PipelineDirection) {
             self.pipeline_direction = direction
         }
-
-        fn fork(&mut self) -> Result<Box<dyn PipelineStep>, ()> {
-            Err(())
-        }
-
+        
         fn start(&self) {
             
         }

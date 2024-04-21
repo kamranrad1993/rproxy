@@ -1,7 +1,7 @@
 #[allow(noop_method_call, unused_assignments)]
 pub mod base64 {
 
-    use crate::pipeline_module::pipeline::{PipelineDirection, PipelineStep, PipelineStepType};
+    use crate::pipeline_module::pipeline::{PipelineDirection, PipelineStep};
     use base64::{
         alphabet,
         engine::{
@@ -22,10 +22,6 @@ pub mod base64 {
     }
 
     impl PipelineStep for Base64 {
-        fn get_step_type(&self) -> PipelineStepType {
-            PipelineStepType::Middle
-        }
-
         fn len(&self) -> std::io::Result<usize> {
             // Ok(self.forward_buffer.len())
             match self.pipeline_direction {
@@ -36,10 +32,6 @@ pub mod base64 {
 
         fn set_pipeline_direction(&mut self, direction: PipelineDirection) {
             self.pipeline_direction = direction;
-        }
-
-        fn fork(&mut self) -> Result<Box<dyn PipelineStep>, ()> {
-            Err(())
         }
 
         fn start(&self) {

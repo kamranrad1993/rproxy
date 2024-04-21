@@ -1,4 +1,4 @@
-use proxy::{Base64, Pipeline, PipelineStep, STDioStep, WebsocketDestination, WebsocketSource, WssDestination, PipelineStepType};
+use proxy::{Base64, Pipeline, PipelineStep, STDioStep, WebsocketDestination, WebsocketSource, WssDestination};
 use std::time::Duration;
 
 const USAGE: &'static str = "
@@ -54,7 +54,7 @@ fn main() {
         eprintln!("Warning: unused arguments left: {:?}.", remaining);
     }
 
-    let mut pipeline = Pipeline::new(steps, Some(1024)).unwrap();
+    let mut pipeline = Pipeline::new(steps, Some(1024));
 
     #[allow(while_true)]
     while true {

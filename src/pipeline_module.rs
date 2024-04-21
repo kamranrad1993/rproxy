@@ -18,16 +18,6 @@ pub mod pipeline {
         InvalidStep(String),
     }
 
-    #[repr(u32)]
-    #[derive(Copy, Clone, Eq, Debug)]
-    pub enum PipelineStepType {
-        Source = 0x01,
-        Middle = 0x02,
-        Destination = 0x04,
-        SourceAndDest = 0x05,
-        Forkable_Source = 0x08,
-    }
-
     pub enum PipelineDirection {
         Forward = 0x01,
         Backward = 0x02,
@@ -59,46 +49,10 @@ pub mod pipeline {
         }
     }
 
-    impl BitAnd for PipelineStepType {
-        type Output = PipelineStepType;
-
-        fn bitand(self, rhs: Self) -> Self::Output {
-            let result_u32 = self as u32 & rhs as u32;
-            match result_u32 {
-                0x01 => PipelineStepType::Source,
-                0x02 => PipelineStepType::Middle,
-                0x04 => PipelineStepType::Destination,
-                0x05 => PipelineStepType::SourceAndDest,
-                0x08 => PipelineStepType::Forkable_Source,
-                _ => panic!("Invalid combination of flags"),
-            }
-        }
-    }
-
-    impl PartialEq for PipelineStepType {
-        fn eq(&self, other: &Self) -> bool {
-            core::mem::discriminant(self) == core::mem::discriminant(other)
-        }
-    }
-
-    impl Display for PipelineStepType {
-        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-            match self {
-                PipelineStepType::Source => write!(f, "PipelineStepType::Source"),
-                PipelineStepType::Middle => write!(f, "PipelineStepType::Middle"),
-                PipelineStepType::Destination => write!(f, "PipelineStepType::Destination"),
-                PipelineStepType::SourceAndDest => write!(f, "PipelineStepType::SourceAndDest"),
-                PipelineStepType::Forkable_Source => write!(f, "PipelineStepType::Forkable_Source"),
-            }
-        }
-    }
-
     pub trait PipelineStep: Read + Write + Send + Sync {
         fn start(&self);
-        fn get_step_type(&self) -> PipelineStepType;
         fn len(&self) -> std::io::Result<usize>;
         fn set_pipeline_direction(&mut self, direction: PipelineDirection);
-        fn fork(&mut self) -> Result<Box<dyn PipelineStep>, ()>;
     }
 
     pub struct Pipeline {
@@ -121,50 +75,16 @@ pub mod pipeline {
     }
 
     impl Pipeline {
-        pub fn new(
-            steps: Vec<Box<dyn PipelineStep>>,
-            buffer_size: Option<usize>,
-        ) -> Result<Self, IOError> {
-            if steps.len() < 2 {
-                Err(IOError::InvalidStep(format!(
-                    "Step count must greater than two."
-                )))
-            } else if steps.first().unwrap().get_step_type() & PipelineStepType::Source
-                != PipelineStepType::Source
-                || steps.first().unwrap().get_step_type() & PipelineStepType::Forkable_Source
-                    != PipelineStepType::Forkable_Source
-            {
-                Err(IOError::InvalidStep(format!(
-                    "First step type must be PipelineStepType::Source."
-                )))
-            } else if steps.last().unwrap().get_step_type() & PipelineStepType::Destination
-                != PipelineStepType::Destination
-            {
-                Err(IOError::InvalidStep(format!(
-                    "Last step type must be PipelineStepType::Destination."
-                )))
-            } else {
-                for i in 1..steps.len() - 2 {
-                    if steps[i].get_step_type() & PipelineStepType::Middle
-                        != PipelineStepType::Middle
-                    {
-                        return Err(IOError::InvalidStep(format!(
-                            "Middle step type must be PipelineStepType::Middle."
-                        )));
-                    }
-                }
-
-                Ok(Pipeline {
-                    steps: steps,
-                    buffer_size: Some(buffer_size.unwrap_or(1024)),
-                })
+        pub fn new(steps: Vec<Box<dyn PipelineStep>>, buffer_size: Option<usize>) -> Self {
+            Pipeline {
+                steps: steps,
+                buffer_size: Some(buffer_size.unwrap_or(1024)),
             }
         }
 
         pub fn read_source(&mut self) -> Result<(), IOError> {
             for i in 0..self.steps.len() {
                 self.steps[i].set_pipeline_direction(PipelineDirection::Forward);
-                // println!("{}", self.steps[i].get_step_type());
             }
 
             for i in 0..self.steps.len() - 1 {

@@ -1,6 +1,12 @@
+mod entry_module;
+pub use entry_module::entry_module::Entry;
+
+mod websocket_entry;
+// pub use websocket_entry::websocket_entry:
+
 mod pipeline_module;
 pub use pipeline_module::{
-    pipeline::Pipeline, pipeline::PipelineDirection, pipeline::PipelineStep, pipeline::PipelineStepType
+    pipeline::Pipeline, pipeline::PipelineDirection, pipeline::PipelineStep
 };
 
 mod websocket_step;

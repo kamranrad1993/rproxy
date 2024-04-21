@@ -1,6 +1,6 @@
 #[allow(non_snake_case, unused_variables, dead_code)]
 pub mod ws_source {
-    use crate::pipeline_module::pipeline::{PipelineDirection, PipelineStep, PipelineStepType};
+    use crate::pipeline_module::pipeline::{PipelineDirection, PipelineStep};
     use crate::StreamStep;
     use std::{
         io::{Read, Write},
@@ -78,10 +78,6 @@ pub mod ws_source {
     }
 
     impl PipelineStep for WebsocketSource {
-        fn get_step_type(&self) -> PipelineStepType {
-            PipelineStepType::Forkable_Source
-        }
-
         fn len(&self) -> std::io::Result<usize> {
             let mut available: usize = 0;
             let result: i32 =
@@ -96,13 +92,6 @@ pub mod ws_source {
 
         fn set_pipeline_direction(&mut self, direction: PipelineDirection) {
             // println!("{}", direction);
-        }
-
-        fn fork(&mut self) -> Result<Box<dyn PipelineStep>, ()> {
-            Ok(Box::new(StreamStep::new(
-                self._tcp_server.accept().unwrap().0,
-                self.get_step_type(),
-            )))
         }
 
         fn start(&self) {
@@ -141,7 +130,7 @@ pub mod ws_destination {
     use tungstenite::protocol::{Role, WebSocketContext};
     use tungstenite::{client, Message, WebSocket};
 
-    use crate::pipeline_module::pipeline::{PipelineDirection, PipelineStep, PipelineStepType};
+    use crate::pipeline_module::pipeline::{PipelineDirection, PipelineStep};
 
     pub struct WebsocketDestination {
         tcp_stream: TcpStream,
@@ -149,10 +138,6 @@ pub mod ws_destination {
     }
 
     impl PipelineStep for WebsocketDestination {
-        fn get_step_type(&self) -> PipelineStepType {
-            PipelineStepType::Destination
-        }
-
         fn len(&self) -> std::io::Result<usize> {
             let mut available: usize = 0;
             let result: i32 =
@@ -167,10 +152,6 @@ pub mod ws_destination {
 
         fn set_pipeline_direction(&mut self, direction: PipelineDirection) {
             // println!("{}", direction);
-        }
-
-        fn fork(&mut self) -> Result<Box<dyn PipelineStep>, ()> {
-            Err(())
         }
 
         fn start(&self) {
@@ -352,10 +333,6 @@ pub mod wss_destination {
     }
 
     impl PipelineStep for WssDestination {
-        fn get_step_type(&self) -> crate::pipeline_module::pipeline::PipelineStepType {
-            crate::pipeline_module::pipeline::PipelineStepType::Destination
-        }
-
         fn len(&self) -> std::io::Result<usize> {
             let mut available: usize = 0;
             let result: i32 =
@@ -369,10 +346,6 @@ pub mod wss_destination {
         }
 
         fn set_pipeline_direction(&mut self, direction: crate::PipelineDirection) {}
-
-        fn fork(&mut self) -> Result<Box<dyn PipelineStep>, ()> {
-            Err(())
-        }
 
         fn start(&self) {
             
