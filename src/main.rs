@@ -1,13 +1,20 @@
-use proxy::{Base64, Pipeline, PipelineStep, STDioStep, WebsocketDestination, WebsocketSource, WssDestination};
-use std::time::Duration;
+use proxy::{
+    Base64, Entry, Pipeline, PipelineStep, STDioStep, WebsocketDestination, WebsocketEntry,
+    WssDestination,
+};
+use std::{str::FromStr, sync::{Arc, Mutex}, thread, time::Duration};
 
 const USAGE: &'static str = "
 Usage: 
   proxy [OPTIONS]
 
 Options:
+  -e entry
   -s define step           
   -h, --help     Print help
+
+Entries:
+  ws://
 
 Steps:
   stdio:
@@ -30,7 +37,7 @@ fn main() {
             break;
         }
         let step = step.unwrap();
-        println!("{step}");
+        println!("step : {step}");
 
         let res: Vec<String> = step.split(":").map(|s| s.to_string()).collect();
         let protocol = Some(res.get(0).unwrap().as_str());
@@ -39,7 +46,6 @@ fn main() {
             Some("stdio") => {
                 steps.push(Box::new(STDioStep::new()));
             }
-            Some("ws-l") => steps.push(Box::new(WebsocketSource::new(step.as_str()))),
             Some("ws") => steps.push(Box::new(WebsocketDestination::new(step.as_str()))),
             Some("wss") => steps.push(Box::new(WssDestination::new(step.as_str()))),
             Some("b64") => steps.push(Box::new(Base64::new(config))),
@@ -48,18 +54,48 @@ fn main() {
             }
         }
     }
+    let mut pipeline = Pipeline::new(steps, Some(1024));
+
+    let entry = pargs.opt_value_from_str::<&str, String>("-e").unwrap();
+    if entry == None {
+        panic!("no entry defined");
+    }
+    let entry = entry.unwrap();
+    println!("entry : {entry}");
+
+    let res: Vec<String> = entry.split(":").map(|s| s.to_string()).collect();
+    let protocol = Some(res.get(0).unwrap().as_str());
+    let config = Some(res.get(1).unwrap().as_str());
+    match protocol {
+        Some("ws") => {
+            let mut entry = Arc::new(Mutex::new(WebsocketEntry::new(entry, pipeline)));
+            let cloned_entry = entry.clone();
+            let listener_thread = thread::spawn(move || {
+                let mut locked_entry = cloned_entry.lock().unwrap();
+                locked_entry.listen();
+            });
+            
+            loop {
+                let mut locked_entry = entry.lock().unwrap();
+                locked_entry.read();
+                locked_entry.write();
+            }
+            listener_thread.join().unwrap();
+        }
+        None | _ => {
+            panic!("unknown entry : {}", entry);
+        }
+    }
 
     let remaining = pargs.finish();
     if !remaining.is_empty() {
         eprintln!("Warning: unused arguments left: {:?}.", remaining);
     }
 
-    let mut pipeline = Pipeline::new(steps, Some(1024));
-
-    #[allow(while_true)]
-    while true {
-        pipeline.read_source().unwrap();
-        pipeline.read_destination().unwrap();
-        std::thread::sleep(Duration::from_millis(10));
-    }
+    // #[allow(while_true)]
+    // while true {
+    //     pipeline.read_source().unwrap();
+    //     pipeline.read_destination().unwrap();
+    //     std::thread::sleep(Duration::from_millis(10));
+    // }
 }

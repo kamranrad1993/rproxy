@@ -1,16 +1,16 @@
 #[allow(noop_method_call, unused_assignments)]
 pub mod base64 {
 
-    use crate::pipeline_module::pipeline::{PipelineDirection, PipelineStep};
+    use crate::{pipeline_module::pipeline::{PipelineDirection, PipelineStep}, BoxedClone};
     use base64::{
         alphabet,
-        engine::{
-            general_purpose::NO_PAD,
-            GeneralPurpose,
-        },
+        engine::{general_purpose::NO_PAD, GeneralPurpose},
         Engine as _,
     };
-    use std::{io::{Read, Write}, collections::VecDeque};
+    use std::{
+        collections::VecDeque,
+        io::{Read, Write},
+    };
 
     pub const B64_ENGINE: GeneralPurpose = GeneralPurpose::new(&alphabet::BIN_HEX, NO_PAD);
     pub const NEW_LINE: &[u8] = &[b'\n'; 1];
@@ -34,11 +34,18 @@ pub mod base64 {
             self.pipeline_direction = direction;
         }
 
-        fn start(&self) {
-            
+        fn start(&self) {}
+    }
+
+    impl BoxedClone for Base64 {
+        fn bclone(&self) -> Box<dyn PipelineStep> {
+            match self.work_mode {
+                PipelineDirection::Forward => Box::new(Base64::new(Some("fw"))),
+                PipelineDirection::Backward => Box::new(Base64::new(Some("bw"))),
+            }
         }
     }
-    
+
     impl Read for Base64 {
         fn read(&mut self, mut buf: &mut [u8]) -> std::io::Result<usize> {
             match self.pipeline_direction {
@@ -100,7 +107,7 @@ pub mod base64 {
 
     impl Base64 {
         pub fn new(config: Option<&str>) -> Base64 {
-            let mut work_mode = PipelineDirection::Forward;
+            let mut work_mode: PipelineDirection = PipelineDirection::Forward;
             match config {
                 Some("fw") => work_mode = PipelineDirection::Forward,
                 Some("bw") => work_mode = PipelineDirection::Backward,
