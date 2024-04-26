@@ -8,6 +8,7 @@
             "name": "Debug",
             "type": "lldb",
             "request": "launch",
+            // "preRunCommands": ["cargo build"],
             "target": "./target/debug/proxy",
             "program": "${workspaceRoot}/target/debug/proxy",
             "cwd": "${workspaceRoot}",

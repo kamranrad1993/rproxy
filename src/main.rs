@@ -68,34 +68,41 @@ fn main() {
     let config = Some(res.get(1).unwrap().as_str());
     match protocol {
         Some("ws") => {
-            let mut entry = Arc::new(Mutex::new(WebsocketEntry::new(entry, pipeline)));
-            let cloned_entry = entry.clone();
-            let listener_thread = thread::spawn(move || {
-                let mut locked_entry = cloned_entry.lock().unwrap();
-                locked_entry.listen();
-            });
+            // let mut entry = Arc::new(Mutex::new(WebsocketEntry::new(entry, pipeline)));
+            let mut entry = WebsocketEntry::new(entry, pipeline);
+            entry.listen();
+
+            // let cloned_entry = entry.clone();
+            // let listener_thread = thread::spawn(move || {
+            //     let mut locked_entry = cloned_entry.lock().unwrap();
+            //     locked_entry.listen();
+            // });
             
-            loop {
-                let mut locked_entry = entry.lock().unwrap();
-                locked_entry.read();
-                locked_entry.write();
-            }
-            listener_thread.join().unwrap();
+            // loop {
+            //     let mut locked_entry = entry.lock().unwrap();
+            //     locked_entry.read();
+            //     locked_entry.write();
+            // }
+
+            // let read_write_thread = thread::spawn(move || {
+            //     let mut locked_entry = entry.lock().unwrap();
+            //     loop {
+            //         locked_entry.read();
+            //         locked_entry.write();
+            //     }
+            // });
+
+            // listener_thread.join().unwrap();
+            // read_write_thread.join().unwrap();
         }
         None | _ => {
             panic!("unknown entry : {}", entry);
         }
     }
 
-    let remaining = pargs.finish();
-    if !remaining.is_empty() {
-        eprintln!("Warning: unused arguments left: {:?}.", remaining);
-    }
-
-    // #[allow(while_true)]
-    // while true {
-    //     pipeline.read_source().unwrap();
-    //     pipeline.read_destination().unwrap();
-    //     std::thread::sleep(Duration::from_millis(10));
+    // let remaining = pargs.finish();
+    // if !remaining.is_empty() {
+    //     eprintln!("Warning: unused arguments left: {:?}.", remaining);
     // }
+
 }
