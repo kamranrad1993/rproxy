@@ -120,15 +120,15 @@ pub mod pipeline {
             }
 
             let mut data: Vec<u8> = Vec::new();
-            data.reserve(self.buffer_size.unwrap());
+            data.resize(self.buffer_size.unwrap(), 0);
             let mut size = 0;
 
-            for i in (1..self.steps.len()).rev() {
+            for i in (0..self.steps.len()).rev() {
                 size = std::cmp::min(data.len(), self.steps[i].len().unwrap());
                 data.clear();
                 data.resize(size, 0);
                 size = self.steps[i].read(data.as_mut_slice()).unwrap();
-                if size > 0 {
+                if size > 0 && i != 0 {
                     // self.steps[i - 1].set_pipeline_direction(PipelineDirection::Backward);
                     self.steps[i - 1].write(&data[0..size]).unwrap();
                     self.steps[i - 1].flush().unwrap();
