@@ -29,18 +29,22 @@ jobs:
         path: target/release/*
     - name: Create GitHub Release
       uses: actions/create-release@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
       with:
-        tag_name: release_1
-        release_name: release_1
-        body: Release notes generated automatically!
+        type: 'zip'
+        filename: 'release.zip'
+        exclusions: '*.git* *.vscode* src/ tools/ cargo.lock cargo.toml'
+      # env:
+      #   GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # with:
+      #   tag_name: release_1
+      #   release_name: release_1
+      #   body: Release notes generated automatically!
 
-    - name: Upload release artifacts
-      uses: actions/upload-release-asset@v1
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        upload_url: ${{ github.releases.upload_url }}
-        asset_name: ${{ github.sha }}.tar.gz
-        asset_path: ./.github/workflows/download-artifact.sh
+    # - name: Upload release artifacts
+    #   uses: actions/upload-release-asset@v1
+    #   env:
+    #     GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    #   with:
+    #     upload_url: ${{ github.releases.upload_url }}
+    #     asset_name: ${{ github.sha }}.tar.gz
+    #     asset_path: ./.github/workflows/download-artifact.sh
