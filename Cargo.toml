@@ -23,5 +23,5 @@ webpki-roots = "0.26.1"
 rcgen = { version = "0.12", features = ["pem", "ring"], default-features = false }
 openssl = { version = "0.10.64", features = ["bindgen", "vendored", "default"] }
 regex = "1.10.4"
-inline_colorization = "0.1.6"
+# inline_colorization = "0.1.6"
 # openssl = "0.10.64"

@@ -1,5 +1,4 @@
 pub mod websocket_entry {
-    use inline_colorization::{color_reset, color_yellow};
     use regex::Regex;
     use std::{
         io::{Read, Write},
@@ -79,7 +78,7 @@ pub mod websocket_entry {
                         });
                     }
                     Err(e) => {
-                        println!("{color_yellow}{}{color_reset}", e)
+                        println!("{}", e)
                     }
                 }
             }
