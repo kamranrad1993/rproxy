@@ -102,10 +102,10 @@ pub mod pipeline {
             }
             let mut size = 0;
 
-            for i in 0..self.steps.len() - 1 {
+            for i in 0..self.steps.len() {
                 self.steps[i].write(&data).unwrap();
                 let size = self.steps[i].len().unwrap();
-                if size > 0 {
+                if size > 0 && i != 0  {
                     data.clear();
                     data.resize(size, 0);
                     self.steps[i].read(data.as_mut_slice()).unwrap();
