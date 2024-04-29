@@ -4,6 +4,9 @@ pub use entry_module::entry_module::Entry;
 mod websocket_entry;
 pub use websocket_entry::websocket_entry::WebsocketEntry;
 
+mod stdio_entry;
+pub use stdio_entry::io_entry::STDioEntry;
+
 mod pipeline_module;
 pub use pipeline_module::{
     pipeline::BoxedClone, pipeline::Pipeline, pipeline::PipelineDirection, pipeline::PipelineStep,

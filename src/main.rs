@@ -1,5 +1,5 @@
 use proxy::{
-    Base64, Entry, Pipeline, PipelineStep, STDioStep, WebsocketDestination, WebsocketEntry, WssDestination
+    Base64, Entry, Pipeline, PipelineStep, STDioEntry, STDioStep, WebsocketDestination, WebsocketEntry, WssDestination
 };
 use std::{str::FromStr, sync::{Arc, Mutex}, thread, time::Duration};
 
@@ -68,6 +68,10 @@ fn main() {
     match protocol {
         Some("ws") => {
             let mut entry = WebsocketEntry::new(entry, pipeline);
+            entry.listen();
+        }
+        Some("stdio") => {
+            let mut entry = STDioEntry::new(String::new(), pipeline);
             entry.listen();
         }
         None | _ => {

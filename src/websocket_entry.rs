@@ -50,7 +50,7 @@ pub mod websocket_entry {
             }
         }
 
-        fn len(&self, stream: &mut TcpStream) -> std::io::Result<usize> {
+        fn len(&self, stream: &mut dyn AsRawFd) -> std::io::Result<usize> {
             let mut available: usize = 0;
             let result: i32 =
                 unsafe { libc::ioctl(stream.as_raw_fd(), libc::FIONREAD, &mut available) };
@@ -61,10 +61,8 @@ pub mod websocket_entry {
                 Ok(available)
             }
         }
-    }
 
-    impl WebsocketEntry {
-        pub fn listen(&mut self) {
+        fn listen(&mut self) {
             for conn in self.tcp_server.incoming() {
                 match conn {
                     Ok(conn) => {
@@ -83,7 +81,9 @@ pub mod websocket_entry {
                 }
             }
         }
+    }
 
+    impl WebsocketEntry {
         fn handle_pipeline(
             &self,
             mut websocket: WebSocket<TcpStream>,

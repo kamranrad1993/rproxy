@@ -1,0 +1,84 @@
+pub mod io_entry {
+    use crate::{
+        pipeline_module::pipeline::{PipelineDirection, PipelineStep},
+        BoxedClone, Entry, Pipeline,
+    };
+    use std::{io::{stdin, stdout, Read, Write}, os::fd::AsRawFd, thread, time::Duration};
+
+    pub struct STDioEntry {
+        pipeline: Pipeline
+    }
+
+    impl Entry for STDioEntry {
+        fn len(&self, stream: &mut dyn AsRawFd) -> std::io::Result<usize> {
+            let mut available: usize = 0;
+            let result: i32 = unsafe { libc::ioctl(stream.as_raw_fd(), libc::FIONREAD, &mut available) };
+            if result == -1 {
+                let errno = std::io::Error::last_os_error();
+                Err(errno)
+            } else {
+                Ok(available)
+            }
+        }
+        
+        fn new(config: String, pipeline: crate::Pipeline) -> Self {
+            STDioEntry {
+                pipeline: pipeline
+            }
+        }
+        
+        fn listen(&mut self) {
+            loop {
+                let len = self.len(&mut std::io::stdin()).unwrap();
+                if len > 0 {
+                    let mut buf: Vec<u8> = vec![0; len];
+                    self.read(buf.as_mut_slice()).unwrap();
+                    self.pipeline.write(buf).unwrap();
+                }
+
+                let mut data = self.pipeline.read().unwrap();
+                if data.len() > 0 {
+                    self.write(&data.as_mut_slice()).unwrap();
+                }
+                thread::sleep(Duration::from_millis(5));
+            }
+        }
+    }
+
+    impl Clone for STDioEntry {
+        fn clone(&self) -> STDioEntry {
+            STDioEntry{
+                pipeline: self.pipeline.clone()
+            }
+        }
+    }
+
+    impl Read for STDioEntry {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let mut io = stdin();
+            let mut available: usize = 0;
+            let result: i32 = unsafe { libc::ioctl(0, libc::FIONREAD, &mut available) };
+
+            if result == -1 {
+                let errno = std::io::Error::last_os_error();
+                Err(errno)
+            } else if available == 0 {
+                Ok(0)
+            } else {
+                io.read(buf)
+            }
+        }
+    }
+
+    impl Write for STDioEntry {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            let mut io = stdout();
+            io.write(buf)
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            let mut io = stdout();
+            io.flush()
+        }
+    }
+}
