@@ -16,7 +16,8 @@
             // "args": "-s stdio: -s b64:fw -s wss://obfs.bikehike.ir:443",
             // "args": "-e ws://127.0.0.1:6667 -s stdio: -s b64:fw -s ws://127.0.0.1:6666",
             // "args": "-e ws://127.0.0.1:6667 -s ws://127.0.0.1:6666",
-            "args": "-e ws://127.0.0.1:6667 -s ws://127.0.0.1:6666",
+            // "args": "-e ws://127.0.0.1:6667 -s ws://127.0.0.1:6666",
+            "args": "-e stdio: -s b64:fw -s ws://127.0.0.1:6666",
             // "args": "-s ws-l://127.0.0.1:6666 -s b64:fw -s stdio:",
             "env": {
                 "RUST_BACKTRACE": "1",
