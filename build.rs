@@ -9,7 +9,7 @@ fn main() {
                         os_info::Version::Semantic(major, minor, patch) => {
                             if *major == 22{
                                 println!("cargo:rustc-cfg=feature=\"ubuntu-22\"");
-                            }else if *major == 22 {
+                            }else if *major == 20 {
                                 println!("cargo:rustc-cfg=feature=\"ubuntu-20\"");
                             }else {
                                 panic!("Build failed due unsupported os {}-{} ", info.os_type(),info.version());
