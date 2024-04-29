@@ -1,5 +1,5 @@
 use proxy::{
-    Base64, Entry, Pipeline, PipelineStep, STDioEntry, STDioStep, WebsocketDestination, WebsocketEntry, WssDestination
+    Base64, Entry, Pipeline, PipelineStep, STDioEntry, STDioStep, TCPEntry, TCPStep, WebsocketDestination, WebsocketEntry, WssDestination
 };
 use std::{str::FromStr, sync::{Arc, Mutex}, thread, time::Duration};
 
@@ -14,11 +14,14 @@ Options:
 
 Entries:
   ws://
+  stdio:
+  tcp://
 
 Steps:
   stdio:
   ws://
   b64:fw b64:bw
+  tcp://
 ";
 
 fn main() {
@@ -48,6 +51,7 @@ fn main() {
             Some("ws") => steps.push(Box::new(WebsocketDestination::new(step.as_str()))),
             Some("wss") => steps.push(Box::new(WssDestination::new(step.as_str()))),
             Some("b64") => steps.push(Box::new(Base64::new(config))),
+            Some("tcp") => steps.push(Box::new(TCPStep::new(step.as_str()))),
             None | _ => {
                 print!("unknown step : {}", step);
             }
@@ -72,6 +76,10 @@ fn main() {
         }
         Some("stdio") => {
             let mut entry = STDioEntry::new(String::new(), pipeline);
+            entry.listen();
+        }
+        Some("tcp") => {
+            let mut entry = TCPEntry::new(entry, pipeline);
             entry.listen();
         }
         None | _ => {

@@ -1,5 +1,6 @@
-pub mod websocket_entry {
+pub mod tcp_entry {
     use regex::Regex;
+    use std::str::{self, FromStr};
     use std::{
         io::{Read, Write},
         net::{TcpListener, TcpStream},
@@ -7,17 +8,17 @@ pub mod websocket_entry {
         thread,
         time::Duration,
     };
-    use tungstenite::{accept, http::Uri, Message, WebSocket};
+    use tungstenite::http::Uri;
 
     use crate::{Entry, Pipeline};
 
-    pub struct WebsocketEntry {
+    pub struct TCPEntry {
         tcp_server: TcpListener,
         address: String,
         pipeline: Pipeline,
     }
 
-    impl Clone for WebsocketEntry {
+    impl Clone for TCPEntry {
         fn clone(&self) -> Self {
             Self {
                 tcp_server: self.tcp_server.try_clone().unwrap(),
@@ -27,7 +28,7 @@ pub mod websocket_entry {
         }
     }
 
-    impl Entry for WebsocketEntry {
+    impl Entry for TCPEntry {
         fn new(config: String, pipeline: crate::Pipeline) -> Self {
             let re = Regex::new(r"((https|wss|ws|http)?:\/\/)([^:/$]{1,})(?::(\d{1,}))").unwrap();
             if !re.is_match(&config) {
@@ -42,8 +43,9 @@ pub mod websocket_entry {
             addr.push_str(":");
             addr.push_str(uri.port().unwrap().as_str());
             let server = TcpListener::bind(addr.clone()).unwrap();
+            // server.set_nonblocking(true).expect("Cannot set non-blocking");
 
-            WebsocketEntry {
+            TCPEntry {
                 tcp_server: server,
                 address: config,
                 pipeline: pipeline,
@@ -67,13 +69,12 @@ pub mod websocket_entry {
                 match conn {
                     Ok(conn) => {
                         println!("new client : {}", conn.peer_addr().unwrap());
-                        let mut websocket = accept(conn.try_clone().unwrap()).unwrap();
 
                         let cloned_pipeline = self.pipeline.clone();
                         let cloned_self = self.clone();
 
                         let read_write_thread = thread::spawn(move || {
-                            cloned_self.handle_pipeline(websocket, conn, cloned_pipeline);
+                            cloned_self.handle_pipeline(conn, cloned_pipeline);
                         });
                     }
                     Err(e) => {
@@ -84,51 +85,25 @@ pub mod websocket_entry {
         }
     }
 
-    impl WebsocketEntry {
-        fn handle_pipeline(
-            &self,
-            mut websocket: WebSocket<TcpStream>,
-            mut stream: TcpStream,
-            mut pipeline: Pipeline,
-        ) {
+    impl TCPEntry {
+        fn handle_pipeline(&self, mut stream: TcpStream, mut pipeline: Pipeline) {
             loop {
+                let mut temp_buf = [0u8, 1];
+                let result = stream.peek(&mut temp_buf);
+                result.unwrap();
+
                 let len = self.len(&mut stream).unwrap();
                 if len > 0 {
-                    let m = &mut websocket.read().unwrap();
-                    if m.len() > 0 {
-                        match m {
-                            Message::Text(data) => unsafe {
-                                let mut buf: Vec<u8> = vec![0; data.as_bytes().len()];
-                                std::ptr::copy(
-                                    data.as_mut_ptr(),
-                                    buf.as_mut_ptr(),
-                                    data.as_bytes().len(),
-                                );
-                                let mut vdata = Vec::<u8>::from_raw_parts(
-                                    data.as_mut_ptr(),
-                                    data.as_bytes().len(),
-                                    data.as_bytes().len(),
-                                );
-                                pipeline.write(vdata).unwrap();
-                            },
-                            Message::Binary(data) => unsafe {
-                                let mut buf: Vec<u8> = vec![0; data.len()];
-                                std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.len());
-                                pipeline.write(buf).unwrap();
-                            },
-                            Message::Ping(_)
-                            | Message::Pong(_)
-                            | Message::Close(_)
-                            | Message::Frame(_) => {}
-                        }
-                    }
+                    let mut buf: Vec<u8> = vec![0; len];
+                    stream.read(buf.as_mut_slice()).unwrap();
+                    pipeline.write(buf).unwrap();
                 }
 
+                thread::sleep(Duration::from_millis(5));
                 if self.pipeline.read_available() {
-                    let data = pipeline.read().unwrap();
+                    let mut data: Vec<u8> = pipeline.read().unwrap();
                     if data.len() > 0 {
-                        let msg = Message::Binary(data);
-                        websocket.send(msg).unwrap();
+                        stream.write(&data.as_mut_slice()).unwrap();
                     }
                 }
                 thread::sleep(Duration::from_millis(5));
