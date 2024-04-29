@@ -67,32 +67,8 @@ fn main() {
     let config = Some(res.get(1).unwrap().as_str());
     match protocol {
         Some("ws") => {
-            // let mut entry = Arc::new(Mutex::new(WebsocketEntry::new(entry, pipeline)));
             let mut entry = WebsocketEntry::new(entry, pipeline);
             entry.listen();
-
-            // let cloned_entry = entry.clone();
-            // let listener_thread = thread::spawn(move || {
-            //     let mut locked_entry = cloned_entry.lock().unwrap();
-            //     locked_entry.listen();
-            // });
-            
-            // loop {
-            //     let mut locked_entry = entry.lock().unwrap();
-            //     locked_entry.read();
-            //     locked_entry.write();
-            // }
-
-            // let read_write_thread = thread::spawn(move || {
-            //     let mut locked_entry = entry.lock().unwrap();
-            //     loop {
-            //         locked_entry.read();
-            //         locked_entry.write();
-            //     }
-            // });
-
-            // listener_thread.join().unwrap();
-            // read_write_thread.join().unwrap();
         }
         None | _ => {
             panic!("unknown entry : {}", entry);

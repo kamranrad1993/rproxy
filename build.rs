@@ -18,7 +18,7 @@ fn main() {
                         os_info::Version::Rolling(_)|
                         os_info::Version::Custom(_)|
                         os_info::Version::Unknown => {
-                            panic!("unknow os version")
+                            panic!("unknow os version {}-{} ", info.os_type(),info.version())
                         },
                     }
                 }
@@ -69,7 +69,7 @@ fn main() {
                 os_info::Type::Unknown|
                 os_info::Type::Windows|
                 _ => {
-                    panic!("Build failed due unsupported os");
+                    panic!("Build failed due unsupported os {}-{} ", info.os_type(),info.version());
                 }
             }
 
