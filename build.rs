@@ -12,7 +12,7 @@ fn main() {
                             }else if *major == 22 {
                                 println!("cargo:rustc-cfg=feature=\"ubuntu-20\"");
                             }else {
-                                panic!("Build failed due unsupported os");
+                                panic!("Build failed due unsupported os {}-{} ", info.os_type(),info.version());
                             }
                         },
                         os_info::Version::Rolling(_)|
