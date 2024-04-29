@@ -255,7 +255,7 @@ pub mod ws_destination {
             WebsocketDestination {
                 tcp_stream: connection,
                 context: WebSocketContext::new(Role::Client, None),
-                address: String::from_str(address).unwrap()
+                address: String::from_str(address).unwrap(),
             }
         }
 
@@ -266,7 +266,8 @@ pub mod ws_destination {
 }
 
 pub mod wss_destination {
-    use openssl::ssl::{SslConnector, SslConnectorBuilder, SslMethod, SslStream, SslVerifyMode};
+    use core::panic;
+    use openssl::ssl::{SslConnector, SslConnectorBuilder, SslMethod, SslStream};
     use std::io::{Read, Write};
     use std::net::TcpStream;
     use std::os::fd::AsRawFd;
@@ -308,8 +309,13 @@ pub mod wss_destination {
             addr.push_str(port.to_string().as_str());
             let connection = TcpStream::connect(addr.clone()).unwrap();
 
+            #[cfg(feature = "ubuntu-22")]
             let mut ssl_connector_builder: SslConnectorBuilder =
                 SslConnector::ConnectConfigurationbuilder(SslMethod::tls()).unwrap();
+            #[cfg(feature = "ubuntu-20")]
+                let mut ssl_connector_builder: SslConnectorBuilder =
+                    SslConnector::builder(SslMethod::tls()).unwrap();
+
             // ssl_connector_builder.set_verify(SslVerifyMode::NONE);
             // ssl_connector_builder.set_verify_callback(SslVerifyMode::NONE, |r, context|{
             //     true
@@ -335,7 +341,7 @@ pub mod wss_destination {
                 ssl_stream: socket,
                 tcp_stream: connection,
                 context: WebSocketContext::new(Role::Client, None),
-                address: String::from_str(address).unwrap()
+                address: String::from_str(address).unwrap(),
             }
         }
 
