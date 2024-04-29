@@ -3,16 +3,22 @@ pub mod io_entry {
         pipeline_module::pipeline::{PipelineDirection, PipelineStep},
         BoxedClone, Entry, Pipeline,
     };
-    use std::{io::{stdin, stdout, Read, Write}, os::fd::AsRawFd, thread, time::Duration};
+    use std::{
+        io::{stdin, stdout, Read, Write},
+        os::fd::AsRawFd,
+        thread,
+        time::Duration,
+    };
 
     pub struct STDioEntry {
-        pipeline: Pipeline
+        pipeline: Pipeline,
     }
 
     impl Entry for STDioEntry {
         fn len(&self, stream: &mut dyn AsRawFd) -> std::io::Result<usize> {
             let mut available: usize = 0;
-            let result: i32 = unsafe { libc::ioctl(stream.as_raw_fd(), libc::FIONREAD, &mut available) };
+            let result: i32 =
+                unsafe { libc::ioctl(stream.as_raw_fd(), libc::FIONREAD, &mut available) };
             if result == -1 {
                 let errno = std::io::Error::last_os_error();
                 Err(errno)
@@ -20,13 +26,11 @@ pub mod io_entry {
                 Ok(available)
             }
         }
-        
+
         fn new(config: String, pipeline: crate::Pipeline) -> Self {
-            STDioEntry {
-                pipeline: pipeline
-            }
+            STDioEntry { pipeline: pipeline }
         }
-        
+
         fn listen(&mut self) {
             loop {
                 let len = self.len(&mut std::io::stdin()).unwrap();
@@ -36,9 +40,12 @@ pub mod io_entry {
                     self.pipeline.write(buf).unwrap();
                 }
 
-                let mut data = self.pipeline.read().unwrap();
-                if data.len() > 0 {
-                    self.write(&data.as_mut_slice()).unwrap();
+                if self.pipeline.read_available() {
+                    let mut data = self.pipeline.read().unwrap();
+                    if data.len() > 0 {
+                        self.write(&data.as_mut_slice()).unwrap();
+                        self.flush().unwrap();
+                    }
                 }
                 thread::sleep(Duration::from_millis(5));
             }
@@ -47,8 +54,8 @@ pub mod io_entry {
 
     impl Clone for STDioEntry {
         fn clone(&self) -> STDioEntry {
-            STDioEntry{
-                pipeline: self.pipeline.clone()
+            STDioEntry {
+                pipeline: self.pipeline.clone(),
             }
         }
     }

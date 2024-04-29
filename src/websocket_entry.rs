@@ -123,10 +123,12 @@ pub mod websocket_entry {
                     }
                 }
 
-                let data = pipeline.read().unwrap();
-                if data.len() > 0 {
-                    let msg = Message::Binary(data);
-                    websocket.send(msg).unwrap();
+                if self.pipeline.read_available() {
+                    let data = pipeline.read().unwrap();
+                    if data.len() > 0 {
+                        let msg = Message::Binary(data);
+                        websocket.send(msg).unwrap();
+                    }
                 }
                 thread::sleep(Duration::from_millis(5));
             }

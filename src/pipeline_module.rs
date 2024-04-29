@@ -136,5 +136,9 @@ pub mod pipeline {
             }
             Ok(data)
         }
+
+        pub fn read_available(&self) -> bool {
+            self.steps.last().unwrap().len().unwrap() != 0
+        }
     }
 }
