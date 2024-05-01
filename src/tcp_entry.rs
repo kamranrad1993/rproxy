@@ -90,7 +90,13 @@ pub mod tcp_entry {
             loop {
                 let mut temp_buf = [0u8, 1];
                 let result = stream.peek(&mut temp_buf);
-                result.unwrap();
+                match result {
+                    Ok(_) => {},
+                    Err(_) => {
+                        println!("connection lost");
+                        break;
+                    },
+                }
 
                 let len = self.len(&mut stream).unwrap();
                 if len > 0 {

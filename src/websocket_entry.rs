@@ -1,4 +1,5 @@
 pub mod websocket_entry {
+    use http::Response;
     use regex::Regex;
     use std::{
         io::{Read, Write},
@@ -7,7 +8,7 @@ pub mod websocket_entry {
         thread,
         time::Duration,
     };
-    use tungstenite::{accept, http::Uri, Message, WebSocket};
+    use tungstenite::{accept, error::ProtocolError, handshake::{server, MidHandshake}, http::Uri, stream, Error, Message, WebSocket};
 
     use crate::{Entry, Pipeline};
 
@@ -67,14 +68,28 @@ pub mod websocket_entry {
                 match conn {
                     Ok(conn) => {
                         println!("new client : {}", conn.peer_addr().unwrap());
-                        let mut websocket = accept(conn.try_clone().unwrap()).unwrap();
+                        let mut websocket = accept(conn.try_clone().unwrap());
+                        match websocket {
+                            Ok(websocket) => {
+                                let cloned_pipeline = self.pipeline.clone();
+                                let cloned_self = self.clone();
 
-                        let cloned_pipeline = self.pipeline.clone();
-                        let cloned_self = self.clone();
-
-                        let read_write_thread = thread::spawn(move || {
-                            cloned_self.handle_pipeline(websocket, conn, cloned_pipeline);
-                        });
+                                let read_write_thread = thread::spawn(move || {
+                                    cloned_self.handle_pipeline(websocket, conn, cloned_pipeline);
+                                });
+                            }
+                            Err(e) => {
+                                println!("{}", e);
+                                match e {
+                                    tungstenite::HandshakeError::Interrupted(mid_handshake) => {
+                                        println!("midhandshake");
+                                    }
+                                    tungstenite::HandshakeError::Failure(e) => {
+                                        self.handle_handshake_error(e, conn);
+                                    }
+                                }
+                            }
+                        }
                     }
                     Err(e) => {
                         println!("{}", e)
@@ -85,6 +100,88 @@ pub mod websocket_entry {
     }
 
     impl WebsocketEntry {
+        fn handle_protocol_error(&self, error : ProtocolError, mut stream: TcpStream){
+            match error {
+                tungstenite::error::ProtocolError::WrongHttpMethod => println!("WrongHttpMethod"),
+                tungstenite::error::ProtocolError::WrongHttpVersion => println!("WrongHttpVersion"),
+                tungstenite::error::ProtocolError::MissingConnectionUpgradeHeader => {
+                    println!("MissingConnectionUpgradeHeader");
+                    // let response = tungstenite::http::Response::new("Only WebSocket connections are welcome here");
+                    let response = Response::builder()
+                         .status(400)
+                        //  .header("X-Custom-Foo", "Bar")
+                         .body("Only WebSocket connections are welcome here")
+                         .unwrap();
+                    tungstenite::handshake::server::write_response(stream, &response).unwrap();
+                    
+                },
+                tungstenite::error::ProtocolError::MissingUpgradeWebSocketHeader => println!("MissingUpgradeWebSocketHeader"),
+                tungstenite::error::ProtocolError::MissingSecWebSocketVersionHeader => println!("MissingSecWebSocketVersionHeader"),
+                tungstenite::error::ProtocolError::MissingSecWebSocketKey => println!("MissingSecWebSocketKey"),
+                tungstenite::error::ProtocolError::SecWebSocketAcceptKeyMismatch => println!("SecWebSocketAcceptKeyMismatch"),
+                tungstenite::error::ProtocolError::JunkAfterRequest => println!("JunkAfterRequest"),
+                tungstenite::error::ProtocolError::CustomResponseSuccessful => println!("CustomResponseSuccessful"),
+                tungstenite::error::ProtocolError::InvalidHeader(_) => println!("InvalidHeader"),
+                tungstenite::error::ProtocolError::HandshakeIncomplete => println!("HandshakeIncomplete"),
+                tungstenite::error::ProtocolError::HttparseError(_) => println!("HttparseError"),
+                tungstenite::error::ProtocolError::SendAfterClosing => println!("SendAfterClosing"),
+                tungstenite::error::ProtocolError::ReceivedAfterClosing => println!("ReceivedAfterClosing"),
+                tungstenite::error::ProtocolError::NonZeroReservedBits => println!("NonZeroReservedBits"),
+                tungstenite::error::ProtocolError::UnmaskedFrameFromClient => println!("UnmaskedFrameFromClient"),
+                tungstenite::error::ProtocolError::MaskedFrameFromServer => println!("MaskedFrameFromServer"),
+                tungstenite::error::ProtocolError::FragmentedControlFrame => println!("FragmentedControlFrame"),
+                tungstenite::error::ProtocolError::ControlFrameTooBig => println!("ControlFrameTooBig"),
+                tungstenite::error::ProtocolError::UnknownControlFrameType(_) => println!("UnknownControlFrameType"),
+                tungstenite::error::ProtocolError::UnknownDataFrameType(_) => println!("UnknownDataFrameType"),
+                tungstenite::error::ProtocolError::UnexpectedContinueFrame => println!("UnexpectedContinueFrame"),
+                tungstenite::error::ProtocolError::ExpectedFragment(_) => println!("ExpectedFragment"),
+                tungstenite::error::ProtocolError::ResetWithoutClosingHandshake => println!("ResetWithoutClosingHandshake"),
+                tungstenite::error::ProtocolError::InvalidOpcode(_) => println!("InvalidOpcode"),
+                tungstenite::error::ProtocolError::InvalidCloseSequence => println!("InvalidCloseSequence"),
+            }
+        }
+
+        fn handle_handshake_error(&self, error: Error, mut stream: TcpStream) {
+            match error {
+                tungstenite::Error::ConnectionClosed => {
+                    println!("ConnectionClosed");
+                }
+                tungstenite::Error::AlreadyClosed => {
+                    println!("AlreadyClosed");
+                }
+                tungstenite::Error::Io(_) => {
+                    println!("Io");
+                }
+                tungstenite::Error::Tls(_) => {
+                    println!("Tls");
+                }
+                tungstenite::Error::Capacity(_) => {
+                    println!("Capacity");
+                }
+                tungstenite::Error::Protocol(protocol) => {
+                    self.handle_protocol_error(protocol, stream);
+                },
+                tungstenite::Error::WriteBufferFull(_) => {
+                    println!("WriteBufferFull");
+                }
+                tungstenite::Error::Utf8 => {
+                    println!("Utf8");
+                }
+                tungstenite::Error::AttackAttempt => {
+                    println!("AttackAttempt");
+                }
+                tungstenite::Error::Url(_) => {
+                    println!("Url");
+                }
+                tungstenite::Error::Http(_) => {
+                    println!("Http");
+                }
+                tungstenite::Error::HttpFormat(_) => {
+                    println!("HttpFormat");
+                }
+            }
+        }
+
         fn handle_pipeline(
             &self,
             mut websocket: WebSocket<TcpStream>,
@@ -92,18 +189,22 @@ pub mod websocket_entry {
             mut pipeline: Pipeline,
         ) {
             loop {
+                let mut temp_buf = [0u8, 1];
+                let result = stream.peek(&mut temp_buf);
+                match result {
+                    Ok(_) => {}
+                    Err(_) => {
+                        println!("connection lost");
+                        break;
+                    }
+                }
+
                 let len = self.len(&mut stream).unwrap();
                 if len > 0 {
                     let m = &mut websocket.read().unwrap();
                     if m.len() > 0 {
                         match m {
                             Message::Text(data) => unsafe {
-                                let mut buf: Vec<u8> = vec![0; data.as_bytes().len()];
-                                std::ptr::copy(
-                                    data.as_mut_ptr(),
-                                    buf.as_mut_ptr(),
-                                    data.as_bytes().len(),
-                                );
                                 let mut vdata = Vec::<u8>::from_raw_parts(
                                     data.as_mut_ptr(),
                                     data.as_bytes().len(),
