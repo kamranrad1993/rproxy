@@ -101,12 +101,12 @@ pub mod pipeline {
                 self.steps[i].set_pipeline_direction(PipelineDirection::Forward);
             }
             let mut size = 0;
-
+            
             for i in 0..self.steps.len() {
                 self.steps[i].write(&data).unwrap();
                 self.steps[i].flush().unwrap();
-                let size = self.steps[i].len().unwrap();
-                if size > 0 && i != self.steps.len()  {
+                size = self.steps[i].len().unwrap();
+                if size > 0 && i != (self.steps.len() - 1) {
                     data.clear();
                     data.resize(size, 0);
                     self.steps[i].read(data.as_mut_slice()).unwrap();
@@ -125,12 +125,11 @@ pub mod pipeline {
             let mut size = 0;
 
             for i in (0..self.steps.len()).rev() {
-                size = std::cmp::min(data.len(), self.steps[i].len().unwrap());
+                size = self.steps[i].len().unwrap();
                 data.clear();
                 data.resize(size, 0);
                 size = self.steps[i].read(data.as_mut_slice()).unwrap();
                 if size > 0 && i != 0 {
-                    // self.steps[i - 1].set_pipeline_direction(PipelineDirection::Backward);
                     self.steps[i - 1].write(&data[0..size]).unwrap();
                     self.steps[i - 1].flush().unwrap();
                 }

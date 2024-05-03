@@ -86,34 +86,45 @@ pub mod tcp_entry {
     }
 
     impl TCPEntry {
+
         fn handle_pipeline(&self, mut stream: TcpStream, mut pipeline: Pipeline) {
             loop {
-                let mut temp_buf = [0u8, 1];
-                let result = stream.peek(&mut temp_buf);
-                match result {
-                    Ok(_) => {},
-                    Err(_) => {
-                        println!("connection lost");
-                        break;
+                match self.len(&mut stream) {
+                    Ok(len) => {
+                        if len > 0 {
+                            let mut buf = vec![0; len];
+                            match stream.read_exact(&mut buf) {
+                                Ok(_) => {
+                                    let final_size = pipeline.write(buf).unwrap();
+                                }
+                                Err(e) => {
+                                    println!("Error reading from stream: {}", e);
+                                    break;
+                                }
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        println!("Error reading from stream: {}", e);
                     },
                 }
-
-                let len = self.len(&mut stream).unwrap();
-                if len > 0 {
-                    let mut buf: Vec<u8> = vec![0; len];
-                    stream.read(buf.as_mut_slice()).unwrap();
-                    pipeline.write(buf).unwrap();
-                }
-
-                thread::sleep(Duration::from_millis(5));
+        
                 if self.pipeline.read_available() {
-                    let mut data: Vec<u8> = pipeline.read().unwrap();
-                    if data.len() > 0 {
-                        stream.write(&data.as_mut_slice()).unwrap();
+                    let data = pipeline.read().unwrap(); 
+                    if !data.is_empty() {
+                        match stream.write_all(&data) {
+                            Ok(_) => {}
+                            Err(e) => {
+                                println!("Error writing to stream: {}", e);
+                                break;
+                            }
+                        }
                     }
+                    
                 }
-                thread::sleep(Duration::from_millis(5));
+
+                std::thread::sleep(Duration::from_millis(10));
             }
-        }
+        }   
     }
 }

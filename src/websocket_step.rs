@@ -180,26 +180,19 @@ pub mod ws_destination {
                 Ok(0)
             } else {
                 let m = &mut self.get_websocket().read().unwrap();
-                // let mut m = &mut self
-                //     .context
-                //     .read::<TcpStream>(&mut self.tcp_stream)
-                //     .unwrap();
                 match m {
                     Message::Text(data) => unsafe {
-                        let length = std::cmp::min(data.as_bytes().len(), buf.len());
                         std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.as_bytes().len());
-                        Ok(length)
+                        Ok(data.as_bytes().len())
                     },
                     Message::Binary(data) => unsafe {
-                        let length = std::cmp::min(data.len(), buf.len());
                         std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.len());
-                        Ok(length)
+                        Ok(data.len())
                     },
                     Message::Ping(_) | Message::Pong(_) | Message::Close(_) | Message::Frame(_) => {
                         Ok(0)
                     }
                 }
-                // self.tcp_stream.read(buf)
             }
         }
     }
@@ -226,8 +219,6 @@ pub mod ws_destination {
     #[allow(unreachable_code)]
     impl WebsocketDestination {
         pub fn new(address: &str) -> Self {
-            let mut connection: Option<TcpStream> = None;
-
             let uri: Uri = address.parse::<Uri>().unwrap();
             let mut addr = String::from(uri.host().unwrap());
             let mut port = 0;
@@ -311,7 +302,7 @@ pub mod wss_destination {
 
             #[cfg(feature = "ubuntu-22")]
             let mut ssl_connector_builder: SslConnectorBuilder =
-                SslConnector::ConnectConfigurationbuilder(SslMethod::tls()).unwrap();
+                SslConnector::builder(SslMethod::tls()).unwrap();
             #[cfg(feature = "ubuntu-20")]
                 let mut ssl_connector_builder: SslConnectorBuilder =
                     SslConnector::builder(SslMethod::tls()).unwrap();
@@ -393,14 +384,12 @@ pub mod wss_destination {
                 //     .unwrap();
                 match m {
                     Message::Text(data) => unsafe {
-                        let length = std::cmp::min(data.as_bytes().len(), buf.len());
                         std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.as_bytes().len());
-                        Ok(length)
+                        Ok(data.as_bytes().len())
                     },
                     Message::Binary(data) => unsafe {
-                        let length = std::cmp::min(data.len(), buf.len());
                         std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.len());
-                        Ok(length)
+                        Ok(data.len())
                     },
                     Message::Ping(_) | Message::Pong(_) | Message::Close(_) | Message::Frame(_) => {
                         Ok(0)
