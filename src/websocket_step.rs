@@ -60,12 +60,10 @@ pub mod ws_destination {
                 match m {
                     Message::Text(data) => unsafe {
                         std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.as_bytes().len());
-                        println!("read from websocket 1: {}", data.as_bytes().len());
                         Ok(data.as_bytes().len())
                     },
                     Message::Binary(data) => unsafe {
                         std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.len());
-                        println!("read from websocket 2: {}", data.len());
                         Ok(data.len())
                     },
                     Message::Ping(_) | Message::Pong(_) | Message::Close(_) | Message::Frame(_) => {
@@ -83,7 +81,6 @@ pub mod ws_destination {
             let result = self.get_websocket().send(msg);
             match result {
                 Ok(_) => {
-                    println!("write to websocket : {}", buf.len());
                     Ok(buf.len())},
                 Err(error) => {
                     panic!("{}", error);

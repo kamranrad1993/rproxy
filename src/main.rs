@@ -57,7 +57,7 @@ fn main() {
             }
         }
     }
-    let pipeline = Pipeline::new(steps, Some(1024*64));
+    let pipeline = Pipeline::new(steps, Some(1024));
 
     let entry = pargs.opt_value_from_str::<&str, String>("-e").unwrap();
     if entry == None {

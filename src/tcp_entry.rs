@@ -125,7 +125,6 @@ pub mod tcp_entry {
                                 Ok(_) => {
                                     let len = buf.len();
                                     let final_size = pipeline.write(buf).unwrap();
-                                    println!("write to pipeline {} - {}", len, final_size);
                                 }
                                 Err(e) => {
                                     println!("Error reading from stream: {}", e);
@@ -142,7 +141,6 @@ pub mod tcp_entry {
                 if self.pipeline.read_available() {
                     let data = pipeline.read().unwrap(); 
                     if !data.is_empty() {
-                        println!("read from pipeline {}", data.len());
                         match stream.write_all(&data) {
                             Ok(_) => {
                             }
@@ -155,7 +153,7 @@ pub mod tcp_entry {
                     
                 }
 
-                std::thread::sleep(Duration::from_millis(150));
+                std::thread::sleep(Duration::from_millis(10));
             }
         }   
     }
