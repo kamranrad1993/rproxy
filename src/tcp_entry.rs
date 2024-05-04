@@ -1,5 +1,7 @@
 pub mod tcp_entry {
+    use libc::c_int;
     use regex::Regex;
+    use std::io;
     use std::str::{self, FromStr};
     use std::{
         io::{Read, Write},
@@ -87,15 +89,43 @@ pub mod tcp_entry {
 
     impl TCPEntry {
 
+        fn is_tcp_connection_alive(&self, stream: &TcpStream) -> io::Result<bool> {
+            let raw_fd = stream.as_raw_fd();
+        
+            // Call ioctl with SIOCOUTQ to get the amount of unsent data in the socket's output buffer
+            let mut outq: c_int = 0;
+            let res = unsafe { libc::ioctl(raw_fd, libc::SIOCOUTQNSD, &mut outq) };
+        
+            if res == -1 {
+                // Error occurred while calling ioctl
+                Err(io::Error::last_os_error())
+            } else {
+                // If there is unsent data in the output buffer, the connection is still alive
+                Ok(outq > 0)
+            }
+        }
+
         fn handle_pipeline(&self, mut stream: TcpStream, mut pipeline: Pipeline) {
             loop {
+                // match self.is_tcp_connection_alive(&stream) {
+                //     Ok(result) => {
+                        
+                //     },
+                //     Err(e) => {
+                //         println!("{e}");
+                //         break;
+                //     },
+                // }
+
                 match self.len(&mut stream) {
                     Ok(len) => {
                         if len > 0 {
                             let mut buf = vec![0; len];
                             match stream.read_exact(&mut buf) {
                                 Ok(_) => {
+                                    let len = buf.len();
                                     let final_size = pipeline.write(buf).unwrap();
+                                    println!("write to pipeline {} - {}", len, final_size);
                                 }
                                 Err(e) => {
                                     println!("Error reading from stream: {}", e);
@@ -112,8 +142,10 @@ pub mod tcp_entry {
                 if self.pipeline.read_available() {
                     let data = pipeline.read().unwrap(); 
                     if !data.is_empty() {
+                        println!("read from pipeline {}", data.len());
                         match stream.write_all(&data) {
-                            Ok(_) => {}
+                            Ok(_) => {
+                            }
                             Err(e) => {
                                 println!("Error writing to stream: {}", e);
                                 break;
@@ -123,7 +155,7 @@ pub mod tcp_entry {
                     
                 }
 
-                std::thread::sleep(Duration::from_millis(10));
+                std::thread::sleep(Duration::from_millis(150));
             }
         }   
     }

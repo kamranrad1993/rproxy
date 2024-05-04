@@ -106,10 +106,10 @@ pub mod pipeline {
                 self.steps[i].write(&data).unwrap();
                 self.steps[i].flush().unwrap();
                 size = self.steps[i].len().unwrap();
-                if size > 0 && i != (self.steps.len() - 1) {
+                if i != (self.steps.len() - 1) {
                     data.clear();
                     data.resize(size, 0);
-                    self.steps[i].read(data.as_mut_slice()).unwrap();
+                    size = self.steps[i].read(data.as_mut_slice()).unwrap();
                 }
             }
             Ok(size)
@@ -129,12 +129,13 @@ pub mod pipeline {
                 data.clear();
                 data.resize(size, 0);
                 size = self.steps[i].read(data.as_mut_slice()).unwrap();
+                // self.steps[i].read(data.as_mut_slice()).unwrap();
                 if size > 0 && i != 0 {
                     self.steps[i - 1].write(&data[0..size]).unwrap();
                     self.steps[i - 1].flush().unwrap();
                 }
             }
-            Ok(data)
+            Ok(Vec::from(&data[0..size]))
         }
 
         pub fn read_available(&self) -> bool {

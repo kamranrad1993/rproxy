@@ -1,126 +1,3 @@
-// #[allow(non_snake_case, unused_variables, dead_code)]
-// pub mod ws_source {
-//     use crate::pipeline_module::pipeline::{PipelineDirection, PipelineStep};
-//     use crate::StreamStep;
-//     use std::{
-//         io::{Read, Write},
-//         net::{TcpListener, TcpStream},
-//         os::fd::AsRawFd,
-//     };
-//     use tungstenite::http::Uri;
-//     use tungstenite::{accept, protocol::Role, Message, WebSocket};
-
-//     pub struct WebsocketSource {
-//         _tcp_server: TcpListener,
-//         tcp_stream: TcpStream,
-//         address: String,
-//     }
-
-//     impl Write for WebsocketSource {
-//         fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-//             // let vec = Vec::from(buf);
-//             // let msg = Message::Binary(vec);
-//             // self.get_websocket().send(msg).unwrap();
-//             // Ok(buf.len())
-//             Ok(0)
-//         }
-
-//         fn flush(&mut self) -> std::io::Result<()> {
-//             // self.get_websocket().flush().unwrap();
-//             // // self.tcp_stream.flush()
-//             Ok(())
-//         }
-//     }
-
-//     impl Read for WebsocketSource {
-//         fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-//             // let mut available: usize = 0;
-//             // let result: i32 =
-//             //     unsafe { libc::ioctl(self.tcp_stream.as_raw_fd(), libc::FIONREAD, &mut available) };
-
-//             // if result == -1 {
-//             //     let errno = std::io::Error::last_os_error();
-//             //     Err(errno)
-//             // } else if available == 0 {
-//             //     Ok(0)
-//             // } else {
-//             //     // self.tcp_stream.read(buf)
-//             //     let m = &mut self.get_websocket().read().unwrap();
-//             //     // let mut m = &mut self
-//             //     //     .context
-//             //     //     .read::<TcpStream>(&mut self.tcp_stream)
-//             //     //     .unwrap();
-//             //     match m {
-//             //         Message::Text(data) => {
-//             //             unsafe {
-//             //                 let length = std::cmp::min(data.as_bytes().len(), buf.len());
-//             //                 std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), length);
-//             //                 Ok(length)
-//             //             }
-//             //             // buf.copy_from_slice(data.as_bytes());
-//             //         }
-//             //         Message::Binary(data) => {
-//             //             unsafe {
-//             //                 let length = std::cmp::min(data.len(), buf.len());
-//             //                 std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), length);
-//             //                 Ok(length)
-//             //             }
-//             //             // buf.copy_from_slice(data.as_slice());
-//             //             // buf = data.as_mut_slice();
-//             //         }
-//             //         Message::Ping(_) | Message::Pong(_) | Message::Close(_) | Message::Frame(_) => {
-//             //             Ok(0)
-//             //         }
-//             //     }
-//             // }
-//             Ok(0)
-//         }
-//     }
-
-//     impl PipelineStep for WebsocketSource {
-//         fn len(&self) -> std::io::Result<usize> {
-//             let mut available: usize = 0;
-//             let result: i32 =
-//                 unsafe { libc::ioctl(self.tcp_stream.as_raw_fd(), libc::FIONREAD, &mut available) };
-//             if result == -1 {
-//                 let errno = std::io::Error::last_os_error();
-//                 Err(errno)
-//             } else {
-//                 Ok(available)
-//             }
-//         }
-
-//         fn set_pipeline_direction(&mut self, direction: PipelineDirection) {
-//             // println!("{}", direction);
-//         }
-
-//         fn start(&self) {
-
-//         }
-//     }
-
-//     impl WebsocketSource {
-//         pub fn new(address: &str) -> Self {
-//             let uri: Uri = address.parse::<Uri>().unwrap();
-//             let mut addr = String::from(uri.host().unwrap());
-//             addr.push_str(":");
-//             addr.push_str(uri.port().unwrap().as_str());
-//             let server = TcpListener::bind(addr.clone()).unwrap();
-//             let r = server.accept().unwrap().0;
-//             accept(r.try_clone().unwrap()).unwrap();
-//             WebsocketSource {
-//                 _tcp_server: server,
-//                 tcp_stream: r,
-//                 address: addr.clone(),
-//             }
-//         }
-
-//         pub fn get_websocket(&self) -> WebSocket<TcpStream> {
-//             WebSocket::from_raw_socket(self.tcp_stream.try_clone().unwrap(), Role::Server, None)
-//         }
-//     }
-// }
-
 #[allow(non_snake_case, unused_variables, dead_code)]
 pub mod ws_destination {
     use std::io::{Read, Write};
@@ -183,10 +60,12 @@ pub mod ws_destination {
                 match m {
                     Message::Text(data) => unsafe {
                         std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.as_bytes().len());
+                        println!("read from websocket 1: {}", data.as_bytes().len());
                         Ok(data.as_bytes().len())
                     },
                     Message::Binary(data) => unsafe {
                         std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.len());
+                        println!("read from websocket 2: {}", data.len());
                         Ok(data.len())
                     },
                     Message::Ping(_) | Message::Pong(_) | Message::Close(_) | Message::Frame(_) => {
@@ -203,7 +82,9 @@ pub mod ws_destination {
             let msg = Message::Binary(vec);
             let result = self.get_websocket().send(msg);
             match result {
-                Ok(_) => Ok(buf.len()),
+                Ok(_) => {
+                    println!("write to websocket : {}", buf.len());
+                    Ok(buf.len())},
                 Err(error) => {
                     panic!("{}", error);
                 }
@@ -302,7 +183,7 @@ pub mod wss_destination {
 
             #[cfg(feature = "ubuntu-22")]
             let mut ssl_connector_builder: SslConnectorBuilder =
-                SslConnector::builder(SslMethod::tls()).unwrap();
+                SslConnector::ConnectConfigurationbuilder(SslMethod::tls()).unwrap();
             #[cfg(feature = "ubuntu-20")]
                 let mut ssl_connector_builder: SslConnectorBuilder =
                     SslConnector::builder(SslMethod::tls()).unwrap();
