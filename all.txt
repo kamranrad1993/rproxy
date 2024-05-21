@@ -1,0 +1,1710 @@
+//########## base64_step.rs ##########
+#[allow(noop_method_call, unused_assignments)]
+pub mod base64 {
+
+    use crate::{pipeline_module::pipeline::{PipelineDirection, PipelineStep}, BoxedClone};
+    use base64::{
+        alphabet,
+        engine::{general_purpose::NO_PAD, GeneralPurpose},
+        Engine as _,
+    };
+    use std::{
+        collections::VecDeque,
+        io::{Read, Write},
+    };
+
+    pub const B64_ENGINE: GeneralPurpose = GeneralPurpose::new(&alphabet::BIN_HEX, NO_PAD);
+    pub const NEW_LINE: &[u8] = &[b'\n'; 1];
+    pub struct Base64 {
+        forward_buffer: Vec<u8>,
+        backward_buffer: Vec<u8>,
+        work_mode: PipelineDirection,
+        pipeline_direction: PipelineDirection,
+    }
+
+    impl PipelineStep for Base64 {
+        fn len(&self) -> std::io::Result<usize> {
+            // Ok(self.forward_buffer.len())
+            match self.pipeline_direction {
+                PipelineDirection::Forward => Ok(self.forward_buffer.len()),
+                PipelineDirection::Backward => Ok(self.backward_buffer.len()),
+            }
+        }
+
+        fn set_pipeline_direction(&mut self, direction: PipelineDirection) {
+            self.pipeline_direction = direction;
+        }
+
+        fn start(&self) {}
+    }
+
+    impl BoxedClone for Base64 {
+        fn bclone(&self) -> Box<dyn PipelineStep> {
+            match self.work_mode {
+                PipelineDirection::Forward => Box::new(Base64::new(Some("fw"))),
+                PipelineDirection::Backward => Box::new(Base64::new(Some("bw"))),
+            }
+        }
+    }
+
+    impl Read for Base64 {
+        fn read(&mut self, mut buf: &mut [u8]) -> std::io::Result<usize> {
+            match self.pipeline_direction {
+                PipelineDirection::Forward => {
+                    let length = std::cmp::min(self.forward_buffer.len(), buf.len());
+                    let size = buf.write(&self.forward_buffer[0..length]).unwrap();
+                    self.forward_buffer.drain(0..size);
+                    Ok(size)
+                }
+                PipelineDirection::Backward => {
+                    let length = std::cmp::min(self.backward_buffer.len(), buf.len());
+                    let size = buf.write(&self.backward_buffer[0..length]).unwrap();
+                    self.backward_buffer.drain(0..size);
+                    Ok(size)
+                }
+            }
+        }
+    }
+
+    impl Write for Base64 {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            let mut local_buf = buf.clone();
+            if buf.ends_with(NEW_LINE) {
+                local_buf = &buf[0..buf.len() - 1];
+            }
+            match self.pipeline_direction {
+                PipelineDirection::Forward => {
+                    if self.work_mode == self.pipeline_direction {
+                        let b64 = B64_ENGINE.encode(local_buf);
+                        let data: &[u8] = b64.as_bytes();
+                        self.forward_buffer.extend(data);
+                        Ok(data.len())
+                    } else {
+                        let b64 = B64_ENGINE.decode(local_buf).unwrap();
+                        self.forward_buffer.extend(b64.as_slice());
+                        Ok(b64.len())
+                    }
+                }
+                PipelineDirection::Backward => {
+                    if self.work_mode == self.pipeline_direction {
+                        let b64 = B64_ENGINE.encode(local_buf);
+                        let data: &[u8] = b64.as_bytes();
+                        self.backward_buffer.extend(data);
+                        Ok(data.len())
+                    } else {
+                        let s = std::str::from_utf8(local_buf).unwrap();
+                        let b64 = B64_ENGINE.decode(s).unwrap();
+                        self.backward_buffer.extend(b64.as_slice());
+                        Ok(b64.len())
+                    }
+                }
+            }
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl Base64 {
+        pub fn new(config: Option<&str>) -> Base64 {
+            let mut work_mode: PipelineDirection = PipelineDirection::Forward;
+            match config {
+                Some("fw") => work_mode = PipelineDirection::Forward,
+                Some("bw") => work_mode = PipelineDirection::Backward,
+                Some(_) | None => {
+                    panic!("Base64Encoder : Unknown Work Mode")
+                }
+            }
+            Base64 {
+                forward_buffer: vec![0; 0],
+                backward_buffer: vec![0; 0],
+                work_mode: work_mode,
+                pipeline_direction: PipelineDirection::Forward,
+            }
+        }
+    }
+}
+
+
+
+
+//########## entry_module.rs ##########
+pub mod entry_module {
+    use std::{
+        io::{Read, Write},
+        net::TcpStream, os::fd::AsRawFd,
+    };
+
+    use crate::Pipeline;
+
+    pub trait Entry : Clone {
+        fn new(config: String, pipeline: Pipeline) -> Self;
+        // fn len(&self) -> std::io::Result<usize>;
+        // fn read(&mut self);
+        // fn write(&mut self);
+        fn len(&self, stream: &mut dyn AsRawFd) -> std::io::Result<usize>;
+        fn listen(&mut self);
+    }
+}
+
+
+
+
+//########## lib.rs ##########
+mod entry_module;
+pub use entry_module::entry_module::Entry;
+
+mod websocket_entry;
+pub use websocket_entry::websocket_entry::WebsocketEntry;
+
+mod stdio_entry;
+pub use stdio_entry::io_entry::STDioEntry;
+
+mod tcp_entry;
+pub use tcp_entry::tcp_entry::TCPEntry;
+
+mod pipeline_module;
+pub use pipeline_module::{
+    pipeline::BoxedClone, pipeline::Pipeline, pipeline::PipelineDirection, pipeline::PipelineStep,
+};
+
+mod websocket_step;
+pub use websocket_step::{ws_destination::WebsocketDestination, wss_destination::WssDestination};
+
+mod stdio_step;
+pub use stdio_step::io_step::STDioStep;
+
+mod base64_step;
+pub use base64_step::base64::Base64;
+
+mod tcp_step;
+pub use tcp_step::tcp_step::TCPStep;
+
+mod random_salt_step;
+pub use random_salt_step::random_salt_step::RSult;
+
+
+
+
+
+//########## main.rs ##########
+use openssl::conf;
+use proxy::{
+    Base64, Entry, Pipeline, PipelineStep, STDioEntry, STDioStep, TCPEntry, TCPStep,
+    WebsocketDestination, WebsocketEntry, WssDestination, RSult
+};
+use std::{
+    str::FromStr,
+    sync::{Arc, Mutex},
+    thread,
+    time::Duration,
+};
+
+const USAGE: &'static str = "
+Usage: 
+  proxy [OPTIONS]
+
+Options:
+  -e entry
+  -s define step           
+  -h, --help     Print help
+
+Entries:
+  ws://
+  stdio:
+  tcp://
+
+Steps:
+  stdio:
+  ws://
+  b64:fw b64:bw
+  tcp://
+  salt:fw-len salf:bw-len
+";
+
+fn main() {
+    let mut pargs = pico_args::Arguments::from_env();
+
+    if pargs.contains(["-h", "--help"]) {
+        print!("{}", USAGE);
+        std::process::exit(0);
+    }
+
+    let mut steps: Vec<Box<dyn PipelineStep>> = Vec::new();
+    loop {
+        let step = pargs.opt_value_from_str::<&str, String>("-s").unwrap();
+        if step == None {
+            break;
+        }
+        let step = step.unwrap();
+        println!("step : {step}");
+
+        let res: Vec<String> = step.split(":").map(|s| s.to_string()).collect();
+        let protocol = Some(res.get(0).unwrap().as_str());
+        let config = Some(res.get(1).unwrap().as_str());
+        match protocol {
+            Some("stdio") => {
+                steps.push(Box::new(STDioStep::new()));
+            }
+            Some("ws") => steps.push(Box::new(WebsocketDestination::new(step.as_str()))),
+            Some("wss") => steps.push(Box::new(WssDestination::new(step.as_str()))),
+            Some("b64") => steps.push(Box::new(Base64::new(config))),
+            Some("tcp") => steps.push(Box::new(TCPStep::new(step.as_str()))),
+            Some("salt") => steps.push(Box::new(RSult::new(config))),
+            None | _ => {
+                print!("unknown step : {}", step);
+            }
+        }
+    }
+    let pipeline = Pipeline::new(steps, Some(1024));
+
+    let entry = pargs.opt_value_from_str::<&str, String>("-e").unwrap();
+    if entry == None {
+        panic!("no entry defined");
+    }
+    let entry = entry.unwrap();
+    println!("entry : {entry}");
+
+    let res: Vec<String> = entry.split(":").map(|s| s.to_string()).collect();
+    let protocol = Some(res.get(0).unwrap().as_str());
+    let config = Some(res.get(1).unwrap().as_str());
+    match protocol {
+        Some("ws") => {
+            let mut entry = WebsocketEntry::new(entry, pipeline);
+            entry.listen();
+        }
+        Some("stdio") => {
+            let mut entry = STDioEntry::new(String::new(), pipeline);
+            entry.listen();
+        }
+        Some("tcp") => {
+            let mut entry = TCPEntry::new(entry, pipeline);
+            entry.listen();
+        }
+        None | _ => {
+            panic!("unknown entry : {}", entry);
+        }
+    }
+
+    // let remaining = pargs.finish();
+    // if !remaining.is_empty() {
+    //     eprintln!("Warning: unused arguments left: {:?}.", remaining);
+    // }
+}
+
+
+
+
+//########## pipeline_module.rs ##########
+// #[allow(non_snake_case, unused_variables, dead_code)]
+
+pub mod pipeline {
+    use std::{
+        fmt::Display,
+        io::{self, Read, Write},
+        ops::{BitAnd, Deref, DerefMut},
+        string::ParseError,
+    };
+
+    #[derive(Debug)]
+    pub enum IOError {
+        InvalidConnection,
+        InvalidBindAddress,
+        UnknownError(String),
+        IoError(io::Error),
+        ParseError(ParseError),
+        InvalidStep(String),
+    }
+
+    pub trait BoxedClone {
+        fn bclone(&self) -> Box<dyn PipelineStep>;
+    }
+
+    pub enum PipelineDirection {
+        Forward = 0x01,
+        Backward = 0x02,
+    }
+
+    impl Clone for PipelineDirection {
+        fn clone(&self) -> Self {
+            match self {
+                Self::Forward => Self::Forward,
+                Self::Backward => Self::Backward,
+            }
+        }
+    }
+
+    impl Copy for PipelineDirection {}
+
+    impl PartialEq for PipelineDirection {
+        fn eq(&self, other: &Self) -> bool {
+            core::mem::discriminant(self) == core::mem::discriminant(other)
+        }
+    }
+
+    impl Display for PipelineDirection {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                PipelineDirection::Forward => write!(f, "PipelineDirection::Forward"),
+                PipelineDirection::Backward => write!(f, "PipelineDirection::Backward"),
+            }
+        }
+    }
+
+    pub trait PipelineStep: Read + Write + Send + Sync + BoxedClone {
+        fn start(&self);
+        fn len(&self) -> std::io::Result<usize>;
+        fn set_pipeline_direction(&mut self, direction: PipelineDirection);
+    }
+
+    pub struct Pipeline {
+        steps: Vec<Box<dyn PipelineStep>>,
+        buffer_size: Option<usize>,
+    }
+
+    impl Deref for Pipeline {
+        type Target = [Box<dyn PipelineStep>];
+
+        fn deref(&self) -> &Self::Target {
+            &self.steps
+        }
+    }
+
+    impl DerefMut for Pipeline {
+        fn deref_mut(&mut self) -> &mut Self::Target {
+            &mut self.steps
+        }
+    }
+
+    impl Clone for Pipeline {
+        fn clone(&self) -> Self {
+            let mut steps = Vec::<Box<dyn PipelineStep>>::new();
+            for step in self.steps.as_slice() {
+                steps.push(step.bclone())
+            }
+            Pipeline::new(steps, self.buffer_size)
+        }
+    }
+
+    impl Pipeline {
+        pub fn new(steps: Vec<Box<dyn PipelineStep>>, buffer_size: Option<usize>) -> Self {
+            Pipeline {
+                steps: steps,
+                buffer_size: Some(buffer_size.unwrap_or(1024)),
+            }
+        }
+
+        pub fn write(&mut self, mut data: Vec<u8>) -> Result<usize, IOError> {
+            for i in 0..self.steps.len() {
+                self.steps[i].set_pipeline_direction(PipelineDirection::Forward);
+            }
+            let mut size = 0;
+            
+            for i in 0..self.steps.len() {
+                self.steps[i].write(&data).unwrap();
+                self.steps[i].flush().unwrap();
+                size = self.steps[i].len().unwrap();
+                if i != (self.steps.len() - 1) {
+                    data.clear();
+                    data.resize(size, 0);
+                    size = self.steps[i].read(data.as_mut_slice()).unwrap();
+                }
+            }
+            Ok(size)
+        }
+
+        pub fn read(&mut self) -> Result<Vec<u8>, IOError> {
+            for i in 0..self.steps.len() {
+                self.steps[i].set_pipeline_direction(PipelineDirection::Backward);
+            }
+
+            let mut data: Vec<u8> = Vec::new();
+            data.resize(self.buffer_size.unwrap(), 0);
+            let mut size = 0;
+
+            for i in (0..self.steps.len()).rev() {
+                size = self.steps[i].len().unwrap();
+                data.clear();
+                data.resize(size, 0);
+                size = self.steps[i].read(data.as_mut_slice()).unwrap();
+                // self.steps[i].read(data.as_mut_slice()).unwrap();
+                if size > 0 && i != 0 {
+                    self.steps[i - 1].write(&data[0..size]).unwrap();
+                    self.steps[i - 1].flush().unwrap();
+                }
+            }
+            Ok(Vec::from(&data[0..size]))
+        }
+
+        pub fn read_available(&self) -> bool {
+            self.steps.last().unwrap().len().unwrap() != 0
+        }
+    }
+}
+
+
+
+
+//########## random_salt_step.rs ##########
+#[allow(noop_method_call, unused_assignments)]
+pub mod random_salt_step {
+    use crate::{
+        pipeline_module::pipeline::{PipelineDirection, PipelineStep},
+        BoxedClone,
+    };
+    use openssl::string;
+    use rand::Rng;
+    use std::{
+        collections::VecDeque,
+        io::{Read, Write},
+    };
+
+    pub struct RSult {
+        salt_lengh: usize,
+        forward_buffer: Vec<u8>,
+        backward_buffer: Vec<u8>,
+        work_mode: PipelineDirection,
+        pipeline_direction: PipelineDirection,
+    }
+
+    impl PipelineStep for RSult {
+        fn len(&self) -> std::io::Result<usize> {
+            // Ok(self.forward_buffer.len())
+            match self.pipeline_direction {
+                PipelineDirection::Forward => Ok(self.forward_buffer.len()),
+                PipelineDirection::Backward => Ok(self.backward_buffer.len()),
+            }
+        }
+
+        fn set_pipeline_direction(&mut self, direction: PipelineDirection) {
+            self.pipeline_direction = direction;
+        }
+
+        fn start(&self) {}
+    }
+
+    impl BoxedClone for RSult {
+        fn bclone(&self) -> Box<dyn PipelineStep> {
+            let mut config : String = String::new();
+            match self.work_mode {
+                PipelineDirection::Forward => config.push_str("fw-"),
+                PipelineDirection::Backward => config.push_str("bw-"),
+            }
+            config.push_str(self.salt_lengh.to_string().as_str());
+            Box::new(RSult::new(Some(config.as_str())))
+        }
+    }
+
+    impl Read for RSult {
+        fn read(&mut self, mut buf: &mut [u8]) -> std::io::Result<usize> {
+            match self.pipeline_direction {
+                PipelineDirection::Forward => {
+                    let length = std::cmp::min(self.forward_buffer.len(), buf.len());
+                    let size = buf.write(&self.forward_buffer[0..length]).unwrap();
+                    self.forward_buffer.drain(0..size);
+                    Ok(size)
+                }
+                PipelineDirection::Backward => {
+                    let length = std::cmp::min(self.backward_buffer.len(), buf.len());
+                    let size = buf.write(&self.backward_buffer[0..length]).unwrap();
+                    self.backward_buffer.drain(0..size);
+                    Ok(size)
+                }
+            }
+        }
+    }
+
+    impl Write for RSult {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            match self.pipeline_direction {
+                PipelineDirection::Forward => {
+                    if self.work_mode == self.pipeline_direction {
+                        let mut rng = rand::thread_rng();
+                        let mut rbytes = vec![0u8; self.salt_lengh as usize];
+                        rng.fill(rbytes.as_mut_slice());
+                        self.forward_buffer.extend(rbytes);
+                        self.forward_buffer.extend(buf);
+                        Ok(self.forward_buffer.len())
+                    } else {
+                        self.forward_buffer.extend(buf[self.salt_lengh..].to_vec());
+                        Ok(buf.len() - self.salt_lengh)
+                        // self.forward_buffer.extend(buf);
+                        // Ok(buf.len())
+                    }
+                }
+                PipelineDirection::Backward => {
+                    if self.work_mode == self.pipeline_direction {
+                        let mut rng = rand::thread_rng();
+                        let mut rbytes = vec![0u8; self.salt_lengh as usize];
+                        rng.fill(rbytes.as_mut_slice());
+                        self.backward_buffer.extend(rbytes);
+                        self.backward_buffer.extend(buf);
+                        Ok(self.backward_buffer.len())
+                    } else {
+                        self.backward_buffer.extend(buf[self.salt_lengh..].to_vec());
+                        Ok(buf.len() - self.salt_lengh)
+                        // self.backward_buffer.extend(buf);
+                        // Ok(buf.len())
+                    }
+                }
+            }
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+
+    impl RSult {
+        pub fn new(config: Option<&str>) -> RSult {
+            let mut work_mode: PipelineDirection = PipelineDirection::Forward;
+            let mut salt_length: usize = 0;
+
+            match config {
+                Some(value) => {
+                    let config: Vec<String> = value.split("-").map(|s| s.to_string()).collect();
+                    if config.len() != 2 {
+                        panic!("random_salt_step: invalid config ");
+                    } else {
+                        match config[0].as_str() {
+                            "fw" => work_mode = PipelineDirection::Forward,
+                            "bw" => work_mode = PipelineDirection::Backward,
+                            _ => {
+                                panic!("random_salt_step : Unknown Work Mode")
+                            }
+                        }
+
+                        match config[1].parse::<usize>() {
+                            Ok(value) => {
+                                salt_length = value;
+                            }
+                            Err(e) => {
+                                panic!("random_salt_step: salt length error : {}", e);
+                            }
+                        }
+                    }
+                }
+                None => {
+                    panic!("random_salt_step : Empty Config")
+                }
+            }
+
+            RSult {
+                salt_lengh: salt_length,
+                forward_buffer: vec![0; 0],
+                backward_buffer: vec![0; 0],
+                work_mode: work_mode,
+                pipeline_direction: PipelineDirection::Forward,
+            }
+        }
+    }
+}
+
+
+
+
+//########## stdio_entry.rs ##########
+pub mod io_entry {
+    use crate::{
+        pipeline_module::pipeline::{PipelineDirection, PipelineStep},
+        BoxedClone, Entry, Pipeline,
+    };
+    use std::{
+        io::{stdin, stdout, Read, Write},
+        os::fd::AsRawFd,
+        thread,
+        time::Duration,
+    };
+
+    pub struct STDioEntry {
+        pipeline: Pipeline,
+    }
+
+    impl Entry for STDioEntry {
+        fn len(&self, stream: &mut dyn AsRawFd) -> std::io::Result<usize> {
+            let mut available: usize = 0;
+            let result: i32 =
+                unsafe { libc::ioctl(stream.as_raw_fd(), libc::FIONREAD, &mut available) };
+            if result == -1 {
+                let errno = std::io::Error::last_os_error();
+                Err(errno)
+            } else {
+                Ok(available)
+            }
+        }
+
+        fn new(config: String, pipeline: crate::Pipeline) -> Self {
+            STDioEntry { pipeline: pipeline }
+        }
+
+        fn listen(&mut self) {
+            loop {
+                let len = self.len(&mut std::io::stdin()).unwrap();
+                if len > 0 {
+                    let mut buf: Vec<u8> = vec![0; len];
+                    self.read(buf.as_mut_slice()).unwrap();
+                    self.pipeline.write(buf).unwrap();
+                }
+
+                if self.pipeline.read_available() {
+                    let mut data = self.pipeline.read().unwrap();
+                    if data.len() > 0 {
+                        self.write(&data.as_mut_slice()).unwrap();
+                        self.flush().unwrap();
+                    }
+                }
+                thread::sleep(Duration::from_millis(5));
+            }
+        }
+    }
+
+    impl Clone for STDioEntry {
+        fn clone(&self) -> STDioEntry {
+            STDioEntry {
+                pipeline: self.pipeline.clone(),
+            }
+        }
+    }
+
+    impl Read for STDioEntry {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let mut io = stdin();
+            let mut available: usize = 0;
+            let result: i32 = unsafe { libc::ioctl(0, libc::FIONREAD, &mut available) };
+
+            if result == -1 {
+                let errno = std::io::Error::last_os_error();
+                Err(errno)
+            } else if available == 0 {
+                Ok(0)
+            } else {
+                io.read(buf)
+            }
+        }
+    }
+
+    impl Write for STDioEntry {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            let mut io = stdout();
+            io.write(buf)
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            let mut io = stdout();
+            io.flush()
+        }
+    }
+}
+
+
+
+
+//########## stdio_step.rs ##########
+pub mod io_step {
+    use crate::{
+        pipeline_module::pipeline::{PipelineDirection, PipelineStep},
+        BoxedClone,
+    };
+    use std::io::{stdin, stdout, Read, Write};
+
+    pub struct STDioStep {}
+
+    impl PipelineStep for STDioStep {
+        fn len(&self) -> std::io::Result<usize> {
+            let mut available: usize = 0;
+            let result: i32 = unsafe { libc::ioctl(0, libc::FIONREAD, &mut available) };
+            if result == -1 {
+                let errno = std::io::Error::last_os_error();
+                Err(errno)
+            } else {
+                Ok(available)
+            }
+        }
+
+        #[allow(unused_variables)]
+        fn set_pipeline_direction(&mut self, direction: PipelineDirection) {}
+
+        fn start(&self) {}
+    }
+
+    impl BoxedClone for STDioStep {
+        fn bclone(&self) -> Box<dyn PipelineStep> {
+            Box::new(STDioStep::new())
+        }
+    }
+
+    impl Default for STDioStep {
+        fn default() -> Self {
+            Self {}
+        }
+    }
+
+    impl Read for STDioStep {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let mut io = stdin();
+            let mut available: usize = 0;
+            let result: i32 = unsafe { libc::ioctl(0, libc::FIONREAD, &mut available) };
+
+            if result == -1 {
+                let errno = std::io::Error::last_os_error();
+                Err(errno)
+            } else if available == 0 {
+                Ok(0)
+            } else {
+                io.read(buf)
+            }
+        }
+    }
+
+    impl Write for STDioStep {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            let mut io = stdout();
+            io.write(buf)
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            let mut io = stdout();
+            io.flush()
+        }
+    }
+
+    impl STDioStep {
+        pub fn new() -> STDioStep {
+            STDioStep {}
+        }
+    }
+}
+
+
+
+
+//########## stream_step.rs ##########
+// pub mod stream_step {
+//     use std::marker::{Send, Sync};
+//     use std::{io::Read, io::Write, os::fd::AsRawFd};
+//     use crate::{PipelineDirection, PipelineStep};
+
+//     pub struct StreamStep<T>
+//     where
+//         T: Read + Write + AsRawFd + Send + Sync,
+//     {
+//         stream: T,
+//         pipeline_direction: PipelineDirection,
+//     }
+
+//     impl<T> StreamStep<T>
+//     where
+//         T: Read + Write + AsRawFd + Send + Sync,
+//     {
+//         pub fn new(stream: T) -> Self {
+//             Self {
+//                 stream: stream,
+//                 pipeline_direction: PipelineDirection::Forward,
+//             }
+//         }
+//     }
+
+//     impl<T> PipelineStep for StreamStep<T>
+//     where
+//         T: Read + Write + AsRawFd + Send + Sync,
+//     {
+//         fn len(&self) -> std::io::Result<usize> {
+//             let mut available: usize = 0;
+//             let result: i32 =
+//                 unsafe { libc::ioctl(self.stream.as_raw_fd(), libc::FIONREAD, &mut available) };
+//             if result == -1 {
+//                 let errno = std::io::Error::last_os_error();
+//                 Err(errno)
+//             } else {
+//                 Ok(available)
+//             }
+//         }
+
+//         fn set_pipeline_direction(&mut self, direction: PipelineDirection) {
+//             self.pipeline_direction = direction
+//         }
+        
+//         fn start(&self) {
+            
+//         }
+//     }
+
+//     impl<T> Read for StreamStep<T>
+//     where
+//         T: Read + Write + AsRawFd + Send + Sync,
+//     {
+//         fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+//             self.stream.read(buf)
+//         }
+//     }
+
+//     impl<T> Write for StreamStep<T>
+//     where
+//         T: Read + Write + AsRawFd + Send + Sync,
+//     {
+//         fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+//             self.stream.write(buf)
+//         }
+
+//         fn flush(&mut self) -> std::io::Result<()> {
+//             self.stream.flush()
+//         }
+//     }
+// }
+
+
+
+
+//########## tcp_entry.rs ##########
+pub mod tcp_entry {
+    use libc::c_int;
+    use regex::Regex;
+    use std::io;
+    use std::str::{self, FromStr};
+    use std::{
+        io::{Read, Write},
+        net::{TcpListener, TcpStream},
+        os::fd::AsRawFd,
+        thread,
+        time::Duration,
+    };
+    use tungstenite::http::Uri;
+
+    use crate::{Entry, Pipeline};
+
+    pub struct TCPEntry {
+        tcp_server: TcpListener,
+        address: String,
+        pipeline: Pipeline,
+    }
+
+    impl Clone for TCPEntry {
+        fn clone(&self) -> Self {
+            Self {
+                tcp_server: self.tcp_server.try_clone().unwrap(),
+                address: self.address.clone(),
+                pipeline: self.pipeline.clone(),
+            }
+        }
+    }
+
+    impl Entry for TCPEntry {
+        fn new(config: String, pipeline: crate::Pipeline) -> Self {
+            let re = Regex::new(r"((https|wss|ws|http)?:\/\/)([^:/$]{1,})(?::(\d{1,}))").unwrap();
+            if !re.is_match(&config) {
+                panic!(
+                    "unsupported config : {}. use with this format ws://host:port ",
+                    config
+                )
+            }
+
+            let uri: Uri = config.parse::<Uri>().unwrap();
+            let mut addr = String::from(uri.host().unwrap());
+            addr.push_str(":");
+            addr.push_str(uri.port().unwrap().as_str());
+            let server = TcpListener::bind(addr.clone()).unwrap();
+            // server.set_nonblocking(true).expect("Cannot set non-blocking");
+
+            TCPEntry {
+                tcp_server: server,
+                address: config,
+                pipeline: pipeline,
+            }
+        }
+
+        fn len(&self, stream: &mut dyn AsRawFd) -> std::io::Result<usize> {
+            let mut available: usize = 0;
+            let result: i32 =
+                unsafe { libc::ioctl(stream.as_raw_fd(), libc::FIONREAD, &mut available) };
+            if result == -1 {
+                let errno = std::io::Error::last_os_error();
+                Err(errno)
+            } else {
+                Ok(available)
+            }
+        }
+
+        fn listen(&mut self) {
+            for conn in self.tcp_server.incoming() {
+                match conn {
+                    Ok(conn) => {
+                        println!("new client : {}", conn.peer_addr().unwrap());
+
+                        let cloned_pipeline = self.pipeline.clone();
+                        let cloned_self = self.clone();
+
+                        let read_write_thread = thread::spawn(move || {
+                            cloned_self.handle_pipeline(conn, cloned_pipeline);
+                        });
+                    }
+                    Err(e) => {
+                        println!("{}", e)
+                    }
+                }
+            }
+        }
+    }
+
+    impl TCPEntry {
+
+        fn is_tcp_connection_alive(&self, stream: &TcpStream) -> io::Result<bool> {
+            let raw_fd = stream.as_raw_fd();
+        
+            // Call ioctl with SIOCOUTQ to get the amount of unsent data in the socket's output buffer
+            let mut outq: c_int = 0;
+            let res = unsafe { libc::ioctl(raw_fd, libc::SIOCOUTQNSD, &mut outq) };
+        
+            if res == -1 {
+                // Error occurred while calling ioctl
+                Err(io::Error::last_os_error())
+            } else {
+                // If there is unsent data in the output buffer, the connection is still alive
+                Ok(outq > 0)
+            }
+        }
+
+        fn handle_pipeline(&self, mut stream: TcpStream, mut pipeline: Pipeline) {
+            loop {
+                // match self.is_tcp_connection_alive(&stream) {
+                //     Ok(result) => {
+                        
+                //     },
+                //     Err(e) => {
+                //         println!("{e}");
+                //         break;
+                //     },
+                // }
+
+                match self.len(&mut stream) {
+                    Ok(len) => {
+                        if len > 0 {
+                            let mut buf = vec![0; len];
+                            match stream.read_exact(&mut buf) {
+                                Ok(_) => {
+                                    let len = buf.len();
+                                    let final_size = pipeline.write(buf).unwrap();
+                                }
+                                Err(e) => {
+                                    println!("Error reading from stream: {}", e);
+                                    break;
+                                }
+                            }
+                        }
+                    },
+                    Err(e) => {
+                        println!("Error reading from stream: {}", e);
+                    },
+                }
+        
+                if self.pipeline.read_available() {
+                    let data = pipeline.read().unwrap(); 
+                    if !data.is_empty() {
+                        match stream.write_all(&data) {
+                            Ok(_) => {
+                            }
+                            Err(e) => {
+                                println!("Error writing to stream: {}", e);
+                                break;
+                            }
+                        }
+                    }
+                    
+                }
+
+                std::thread::sleep(Duration::from_millis(100));
+            }
+        }   
+    }
+}
+
+
+
+
+//########## tcp_step.rs ##########
+#[allow(non_snake_case, unused_variables, dead_code)]
+pub mod tcp_step {
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+    use std::os::fd::AsRawFd;
+    use std::str::FromStr;
+    use tungstenite::client::IntoClientRequest;
+    use tungstenite::http::{Request, Uri};
+    use tungstenite::protocol::{Role, WebSocketContext};
+    use tungstenite::{client, Message, WebSocket};
+
+    use crate::pipeline_module::pipeline::{PipelineDirection, PipelineStep};
+    use crate::BoxedClone;
+
+    pub struct TCPStep {
+        tcp_stream: TcpStream,
+        address: String,
+    }
+
+    impl PipelineStep for TCPStep {
+        fn len(&self) -> std::io::Result<usize> {
+            let mut available: usize = 0;
+            let result: i32 =
+                unsafe { libc::ioctl(self.tcp_stream.as_raw_fd(), libc::FIONREAD, &mut available) };
+            if result == -1 {
+                let errno = std::io::Error::last_os_error();
+                Err(errno)
+            } else {
+                Ok(available)
+            }
+        }
+
+        fn set_pipeline_direction(&mut self, direction: PipelineDirection) {
+            // println!("{}", direction);
+        }
+
+        fn start(&self) {}
+    }
+
+    impl BoxedClone for TCPStep {
+        fn bclone(&self) -> Box<dyn PipelineStep> {
+            Box::new(TCPStep::new(&self.address))
+        }
+    }
+
+    impl Read for TCPStep {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let mut available: usize = 0;
+            let result: i32 =
+                unsafe { libc::ioctl(self.tcp_stream.as_raw_fd(), libc::FIONREAD, &mut available) };
+
+            if result == -1 {
+                let errno = std::io::Error::last_os_error();
+                Err(errno)
+            } else if available == 0 {
+                Ok(0)
+            } else {
+                self.tcp_stream.read(buf)
+            }
+        }
+    }
+
+    impl Write for TCPStep {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            self.tcp_stream.write(buf)
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            self.tcp_stream.flush()
+        }
+    }
+
+    #[allow(unreachable_code)]
+    impl TCPStep {
+        pub fn new(address: &str) -> Self {
+            let mut connection: Option<TcpStream> = None;
+
+            let uri: Uri = address.parse::<Uri>().unwrap();
+            let mut addr = String::from(uri.host().unwrap());
+            let port = uri.port().unwrap().as_u16();
+
+            addr.push_str(":");
+            addr.push_str(port.to_string().as_str());
+            let connection = TcpStream::connect(addr).unwrap();
+
+            //handle errors
+            TCPStep {
+                tcp_stream: connection,
+                address: String::from_str(address).unwrap(),
+            }
+        }
+    }
+}
+
+
+
+//########## websocket_entry.rs ##########
+pub mod websocket_entry {
+    use http::Response;
+    use regex::Regex;
+    use std::{
+        io::{Read, Write},
+        net::{TcpListener, TcpStream},
+        os::fd::AsRawFd,
+        thread,
+        time::Duration,
+    };
+    use tungstenite::{
+        accept,
+        error::ProtocolError,
+        handshake::{server, MidHandshake},
+        http::Uri,
+        stream, Error, Message, WebSocket,
+    };
+
+    use crate::{Entry, Pipeline};
+
+    pub struct WebsocketEntry {
+        tcp_server: TcpListener,
+        address: String,
+        pipeline: Pipeline,
+    }
+
+    impl Clone for WebsocketEntry {
+        fn clone(&self) -> Self {
+            Self {
+                tcp_server: self.tcp_server.try_clone().unwrap(),
+                address: self.address.clone(),
+                pipeline: self.pipeline.clone(),
+            }
+        }
+    }
+
+    impl Entry for WebsocketEntry {
+        fn new(config: String, pipeline: crate::Pipeline) -> Self {
+            let re = Regex::new(r"((https|wss|ws|http)?:\/\/)([^:/$]{1,})(?::(\d{1,}))").unwrap();
+            if !re.is_match(&config) {
+                panic!(
+                    "unsupported config : {}. use with this format ws://host:port ",
+                    config
+                )
+            }
+
+            let uri: Uri = config.parse::<Uri>().unwrap();
+            let mut addr = String::from(uri.host().unwrap());
+            addr.push_str(":");
+            addr.push_str(uri.port().unwrap().as_str());
+            let server = TcpListener::bind(addr.clone()).unwrap();
+
+            WebsocketEntry {
+                tcp_server: server,
+                address: config,
+                pipeline: pipeline,
+            }
+        }
+
+        fn len(&self, stream: &mut dyn AsRawFd) -> std::io::Result<usize> {
+            let mut available: usize = 0;
+            let result: i32 =
+                unsafe { libc::ioctl(stream.as_raw_fd(), libc::FIONREAD, &mut available) };
+            if result == -1 {
+                let errno = std::io::Error::last_os_error();
+                Err(errno)
+            } else {
+                Ok(available)
+            }
+        }
+
+        fn listen(&mut self) {
+            for conn in self.tcp_server.incoming() {
+                match conn {
+                    Ok(conn) => {
+                        println!("new client : {}", conn.peer_addr().unwrap());
+                        let mut websocket = accept(conn.try_clone().unwrap());
+                        match websocket {
+                            Ok(websocket) => {
+                                let cloned_pipeline = self.pipeline.clone();
+                                let cloned_self = self.clone();
+
+                                let read_write_thread = thread::spawn(move || {
+                                    cloned_self.handle_pipeline(websocket, conn, cloned_pipeline);
+                                });
+                            }
+                            Err(e) => {
+                                println!("{}", e);
+                                match e {
+                                    tungstenite::HandshakeError::Interrupted(mid_handshake) => {
+                                        println!("midhandshake");
+                                    }
+                                    tungstenite::HandshakeError::Failure(e) => {
+                                        self.handle_handshake_error(e, conn);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        println!("{}", e)
+                    }
+                }
+            }
+        }
+    }
+
+    impl WebsocketEntry {
+        fn handle_protocol_error(&self, error: ProtocolError, mut stream: TcpStream) {
+            match error {
+                tungstenite::error::ProtocolError::WrongHttpMethod => println!("WrongHttpMethod"),
+                tungstenite::error::ProtocolError::WrongHttpVersion => println!("WrongHttpVersion"),
+                tungstenite::error::ProtocolError::MissingConnectionUpgradeHeader => {
+                    println!("MissingConnectionUpgradeHeader");
+                    // let response = tungstenite::http::Response::new("Only WebSocket connections are welcome here");
+                    let response = Response::builder()
+                        .status(400)
+                        //  .header("X-Custom-Foo", "Bar")
+                        .body("Only WebSocket connections are welcome here")
+                        .unwrap();
+                    tungstenite::handshake::server::write_response(stream, &response).unwrap();
+                }
+                tungstenite::error::ProtocolError::MissingUpgradeWebSocketHeader => {
+                    println!("MissingUpgradeWebSocketHeader")
+                }
+                tungstenite::error::ProtocolError::MissingSecWebSocketVersionHeader => {
+                    println!("MissingSecWebSocketVersionHeader")
+                }
+                tungstenite::error::ProtocolError::MissingSecWebSocketKey => {
+                    println!("MissingSecWebSocketKey")
+                }
+                tungstenite::error::ProtocolError::SecWebSocketAcceptKeyMismatch => {
+                    println!("SecWebSocketAcceptKeyMismatch")
+                }
+                tungstenite::error::ProtocolError::JunkAfterRequest => println!("JunkAfterRequest"),
+                tungstenite::error::ProtocolError::CustomResponseSuccessful => {
+                    println!("CustomResponseSuccessful")
+                }
+                tungstenite::error::ProtocolError::InvalidHeader(_) => println!("InvalidHeader"),
+                tungstenite::error::ProtocolError::HandshakeIncomplete => {
+                    println!("HandshakeIncomplete")
+                }
+                tungstenite::error::ProtocolError::HttparseError(_) => println!("HttparseError"),
+                tungstenite::error::ProtocolError::SendAfterClosing => println!("SendAfterClosing"),
+                tungstenite::error::ProtocolError::ReceivedAfterClosing => {
+                    println!("ReceivedAfterClosing")
+                }
+                tungstenite::error::ProtocolError::NonZeroReservedBits => {
+                    println!("NonZeroReservedBits")
+                }
+                tungstenite::error::ProtocolError::UnmaskedFrameFromClient => {
+                    println!("UnmaskedFrameFromClient")
+                }
+                tungstenite::error::ProtocolError::MaskedFrameFromServer => {
+                    println!("MaskedFrameFromServer")
+                }
+                tungstenite::error::ProtocolError::FragmentedControlFrame => {
+                    println!("FragmentedControlFrame")
+                }
+                tungstenite::error::ProtocolError::ControlFrameTooBig => {
+                    println!("ControlFrameTooBig")
+                }
+                tungstenite::error::ProtocolError::UnknownControlFrameType(_) => {
+                    println!("UnknownControlFrameType")
+                }
+                tungstenite::error::ProtocolError::UnknownDataFrameType(_) => {
+                    println!("UnknownDataFrameType")
+                }
+                tungstenite::error::ProtocolError::UnexpectedContinueFrame => {
+                    println!("UnexpectedContinueFrame")
+                }
+                tungstenite::error::ProtocolError::ExpectedFragment(_) => {
+                    println!("ExpectedFragment")
+                }
+                tungstenite::error::ProtocolError::ResetWithoutClosingHandshake => {
+                    println!("ResetWithoutClosingHandshake")
+                }
+                tungstenite::error::ProtocolError::InvalidOpcode(_) => println!("InvalidOpcode"),
+                tungstenite::error::ProtocolError::InvalidCloseSequence => {
+                    println!("InvalidCloseSequence")
+                }
+            }
+        }
+
+        fn handle_handshake_error(&self, error: Error, mut stream: TcpStream) {
+            match error {
+                tungstenite::Error::ConnectionClosed => {
+                    println!("ConnectionClosed");
+                }
+                tungstenite::Error::AlreadyClosed => {
+                    println!("AlreadyClosed");
+                }
+                tungstenite::Error::Io(_) => {
+                    println!("Io");
+                }
+                tungstenite::Error::Tls(_) => {
+                    println!("Tls");
+                }
+                tungstenite::Error::Capacity(_) => {
+                    println!("Capacity");
+                }
+                tungstenite::Error::Protocol(protocol) => {
+                    self.handle_protocol_error(protocol, stream);
+                }
+                tungstenite::Error::WriteBufferFull(_) => {
+                    println!("WriteBufferFull");
+                }
+                tungstenite::Error::Utf8 => {
+                    println!("Utf8");
+                }
+                tungstenite::Error::AttackAttempt => {
+                    println!("AttackAttempt");
+                }
+                tungstenite::Error::Url(_) => {
+                    println!("Url");
+                }
+                tungstenite::Error::Http(_) => {
+                    println!("Http");
+                }
+                tungstenite::Error::HttpFormat(_) => {
+                    println!("HttpFormat");
+                }
+            }
+        }
+
+        fn handle_pipeline(
+            &self,
+            mut websocket: WebSocket<TcpStream>,
+            mut stream: TcpStream,
+            mut pipeline: Pipeline,
+        ) {
+            loop {
+                let len = self.len(&mut stream).unwrap();
+                if len > 0 {
+                    match &mut websocket.read(){
+                        Ok(m) => {
+                            if m.len() > 0 {
+                                match m {
+                                    Message::Text(data) => unsafe {
+                                        let mut vdata = vec![0; data.as_bytes().len()];
+                                        std::ptr::copy(data.as_mut_ptr(), vdata.as_mut_ptr(), data.as_bytes().len());
+                                        pipeline.write(vdata).unwrap();
+                                    },
+                                    Message::Binary(data) => unsafe {
+                                        let mut buf: Vec<u8> = vec![0; data.len()];
+                                        std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.len());
+                                        pipeline.write(buf).unwrap();
+                                    },
+                                    Message::Ping(_)
+                                    | Message::Pong(_)
+                                    | Message::Close(_)
+                                    | Message::Frame(_) => {}
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            println!("Error reading from stream: {}", e);
+                            break;
+                        }
+                    }
+                }
+
+                if self.pipeline.read_available() {
+                    let data = pipeline.read().unwrap();
+                    if !data.is_empty() {
+                        let msg = Message::Binary(data);
+                        match websocket.send(msg) {
+                            Ok(_) => {}
+                            Err(e) => {
+                                println!("Error writing to stream: {}", e);
+                                break;
+                            }
+                        }
+                    }
+                }
+                
+                std::thread::sleep(Duration::from_millis(10));
+            }
+        }
+    }
+}
+
+
+
+
+//########## websocket_step.rs ##########
+#[allow(non_snake_case, unused_variables, dead_code)]
+pub mod ws_destination {
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+    use std::os::fd::AsRawFd;
+    use std::str::FromStr;
+    use tungstenite::client::IntoClientRequest;
+    use tungstenite::http::{Request, Uri};
+    use tungstenite::protocol::{Role, WebSocketContext};
+    use tungstenite::{client, Message, WebSocket};
+
+    use crate::pipeline_module::pipeline::{PipelineDirection, PipelineStep};
+    use crate::BoxedClone;
+
+    pub struct WebsocketDestination {
+        tcp_stream: TcpStream,
+        context: WebSocketContext,
+        address: String,
+    }
+
+    impl PipelineStep for WebsocketDestination {
+        fn len(&self) -> std::io::Result<usize> {
+            let mut available: usize = 0;
+            let result: i32 =
+                unsafe { libc::ioctl(self.tcp_stream.as_raw_fd(), libc::FIONREAD, &mut available) };
+            if result == -1 {
+                let errno = std::io::Error::last_os_error();
+                Err(errno)
+            } else {
+                Ok(available)
+            }
+        }
+
+        fn set_pipeline_direction(&mut self, direction: PipelineDirection) {
+            // println!("{}", direction);
+        }
+
+        fn start(&self) {}
+    }
+
+    impl BoxedClone for WebsocketDestination {
+        fn bclone(&self) -> Box<dyn PipelineStep> {
+            Box::new(WebsocketDestination::new(&self.address))
+        }
+    }
+
+    impl Read for WebsocketDestination {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let mut available: usize = 0;
+            let result: i32 =
+                unsafe { libc::ioctl(self.tcp_stream.as_raw_fd(), libc::FIONREAD, &mut available) };
+
+            if result == -1 {
+                let errno = std::io::Error::last_os_error();
+                Err(errno)
+            } else if available == 0 {
+                Ok(0)
+            } else {
+                let m = &mut self.get_websocket().read().unwrap();
+                match m {
+                    Message::Text(data) => unsafe {
+                        std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.as_bytes().len());
+                        Ok(data.as_bytes().len())
+                    },
+                    Message::Binary(data) => unsafe {
+                        std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.len());
+                        Ok(data.len())
+                    },
+                    Message::Ping(_) | Message::Pong(_) | Message::Close(_) | Message::Frame(_) => {
+                        Ok(0)
+                    }
+                }
+            }
+        }
+    }
+
+    impl Write for WebsocketDestination {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            let vec = Vec::from(buf);
+            let msg = Message::Binary(vec);
+            let result = self.get_websocket().send(msg);
+            match result {
+                Ok(_) => {
+                    Ok(buf.len())},
+                Err(error) => {
+                    panic!("{}", error);
+                }
+            }
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            self.get_websocket().flush().unwrap();
+            Ok(())
+        }
+    }
+
+    #[allow(unreachable_code)]
+    impl WebsocketDestination {
+        pub fn new(address: &str) -> Self {
+            let uri: Uri = address.parse::<Uri>().unwrap();
+            let mut addr = String::from(uri.host().unwrap());
+            let mut port = 0;
+            if uri.port() != None {
+                port = uri.port().unwrap().as_u16();
+            } else {
+                port = match uri.scheme_str() {
+                    Some("ws") => 80,
+                    Some("wss") => 443,
+                    Some("http") => 80,
+                    Some("https") => 443,
+                    None | _ => {
+                        panic!("unknow uri scheme")
+                    }
+                };
+            }
+
+            addr.push_str(":");
+            addr.push_str(port.to_string().as_str());
+            let connection = TcpStream::connect(addr).unwrap();
+            let req: tungstenite::http::Request<()> = uri.into_client_request().unwrap();
+            let l = client(req, connection.try_clone().unwrap()).unwrap();
+
+            //handle errors
+            WebsocketDestination {
+                tcp_stream: connection,
+                context: WebSocketContext::new(Role::Client, None),
+                address: String::from_str(address).unwrap(),
+            }
+        }
+
+        pub fn get_websocket(&self) -> WebSocket<TcpStream> {
+            WebSocket::from_raw_socket(self.tcp_stream.try_clone().unwrap(), Role::Client, None)
+        }
+    }
+}
+
+pub mod wss_destination {
+    use core::panic;
+    use openssl::ssl::{SslConnector, SslConnectorBuilder, SslMethod, SslStream};
+    use std::io::{Read, Write};
+    use std::net::TcpStream;
+    use std::os::fd::AsRawFd;
+    use std::str::FromStr;
+    use tungstenite::client::IntoClientRequest;
+    use tungstenite::http::{HeaderName, Request, Uri};
+    use tungstenite::protocol::{Role, WebSocketContext};
+    use tungstenite::{client, Message, WebSocket};
+
+    use crate::{BoxedClone, PipelineStep};
+
+    pub struct WssDestination {
+        tcp_stream: TcpStream,
+        ssl_stream: WebSocket<SslStream<TcpStream>>,
+        context: WebSocketContext,
+        address: String,
+    }
+
+    impl WssDestination {
+        pub fn new(address: &str) -> WssDestination {
+            let uri: Uri = address.parse::<Uri>().unwrap();
+            let mut addr = String::from(uri.host().unwrap());
+            let mut port = 0;
+            if uri.port() != None {
+                port = uri.port().unwrap().as_u16();
+            } else {
+                port = match uri.scheme_str() {
+                    Some("ws") => 80,
+                    Some("wss") => 443,
+                    Some("http") => 80,
+                    Some("https") => 443,
+                    None | _ => {
+                        panic!("unknow uri scheme")
+                    }
+                };
+            }
+
+            addr.push_str(":");
+            addr.push_str(port.to_string().as_str());
+            let connection = TcpStream::connect(addr.clone()).unwrap();
+
+            #[cfg(feature = "ubuntu-22")]
+            let mut ssl_connector_builder: SslConnectorBuilder =
+                SslConnector::builder(SslMethod::tls()).unwrap();
+            #[cfg(feature = "ubuntu-20")]
+                let mut ssl_connector_builder: SslConnectorBuilder =
+                    SslConnector::builder(SslMethod::tls()).unwrap();
+
+            // ssl_connector_builder.set_verify(SslVerifyMode::NONE);
+            // ssl_connector_builder.set_verify_callback(SslVerifyMode::NONE, |r, context|{
+            //     true
+            // });
+            // ssl_connector_builder.set_verify_callback(SslVerifyMode::PEER, |r, context|{
+            //     true
+            // });
+
+            let mut ssl_connector = ssl_connector_builder.build();
+            let ssl_connection = ssl_connector
+                .configure()
+                .unwrap()
+                // .verify_hostname(false)
+                // .use_server_name_indication(false)
+                .connect(uri.host().unwrap(), connection.try_clone().unwrap())
+                .unwrap();
+
+            let req: tungstenite::http::Request<()> = uri.into_client_request().unwrap();
+            // let r = ssl_connection.get_mut();
+            let (socket, _response) = client(req, ssl_connection).unwrap();
+
+            Self {
+                ssl_stream: socket,
+                tcp_stream: connection,
+                context: WebSocketContext::new(Role::Client, None),
+                address: String::from_str(address).unwrap(),
+            }
+        }
+
+        pub fn get_websocket(&mut self) -> WebSocket<&mut SslStream<TcpStream>> {
+            WebSocket::from_raw_socket(self.ssl_stream.get_mut(), Role::Client, None)
+        }
+    }
+
+    impl PipelineStep for WssDestination {
+        fn len(&self) -> std::io::Result<usize> {
+            let mut available: usize = 0;
+            let result: i32 =
+                unsafe { libc::ioctl(self.tcp_stream.as_raw_fd(), libc::FIONREAD, &mut available) };
+            if result == -1 {
+                let errno = std::io::Error::last_os_error();
+                Err(errno)
+            } else {
+                Ok(available)
+            }
+        }
+
+        fn set_pipeline_direction(&mut self, direction: crate::PipelineDirection) {}
+
+        fn start(&self) {}
+    }
+
+    impl BoxedClone for WssDestination {
+        fn bclone(&self) -> Box<dyn PipelineStep> {
+            Box::new(WssDestination::new(&self.address))
+        }
+    }
+
+    impl Read for WssDestination {
+        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+            let mut available: usize = 0;
+            let result: i32 =
+                unsafe { libc::ioctl(self.tcp_stream.as_raw_fd(), libc::FIONREAD, &mut available) };
+
+            if result == -1 {
+                let errno = std::io::Error::last_os_error();
+                Err(errno)
+            } else if available == 0 {
+                Ok(0)
+            } else {
+                let m = &mut self.get_websocket().read().unwrap();
+                // let mut m = &mut self
+                //     .context
+                //     .read::<TcpStream>(&mut self.tcp_stream)
+                //     .unwrap();
+                match m {
+                    Message::Text(data) => unsafe {
+                        std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.as_bytes().len());
+                        Ok(data.as_bytes().len())
+                    },
+                    Message::Binary(data) => unsafe {
+                        std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.len());
+                        Ok(data.len())
+                    },
+                    Message::Ping(_) | Message::Pong(_) | Message::Close(_) | Message::Frame(_) => {
+                        Ok(0)
+                    }
+                }
+                // self.tcp_stream.read(buf)
+            }
+        }
+    }
+
+    impl Write for WssDestination {
+        fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
+            let vec = Vec::from(buf);
+            let msg = Message::Binary(vec);
+            let result = self.get_websocket().send(msg);
+            match result {
+                Ok(_) => Ok(buf.len()),
+                Err(error) => {
+                    panic!("{}", error);
+                }
+            }
+        }
+
+        fn flush(&mut self) -> std::io::Result<()> {
+            self.get_websocket().flush().unwrap();
+            Ok(())
+        }
+    }
+}
+
+
+
+

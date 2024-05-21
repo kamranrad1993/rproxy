@@ -22,6 +22,7 @@ pub mod websocket_entry {
         tcp_server: TcpListener,
         address: String,
         pipeline: Pipeline,
+        loop_time: u64,
     }
 
     impl Clone for WebsocketEntry {
@@ -30,12 +31,13 @@ pub mod websocket_entry {
                 tcp_server: self.tcp_server.try_clone().unwrap(),
                 address: self.address.clone(),
                 pipeline: self.pipeline.clone(),
+                loop_time: self.loop_time,
             }
         }
     }
 
     impl Entry for WebsocketEntry {
-        fn new(config: String, pipeline: crate::Pipeline) -> Self {
+        fn new(config: String, pipeline: crate::Pipeline, loop_time: u64) -> Self {
             let re = Regex::new(r"((https|wss|ws|http)?:\/\/)([^:/$]{1,})(?::(\d{1,}))").unwrap();
             if !re.is_match(&config) {
                 panic!(
@@ -54,6 +56,7 @@ pub mod websocket_entry {
                 tcp_server: server,
                 address: config,
                 pipeline: pipeline,
+                loop_time: loop_time,
             }
         }
 
@@ -232,18 +235,26 @@ pub mod websocket_entry {
             loop {
                 let len = self.len(&mut stream).unwrap();
                 if len > 0 {
-                    match &mut websocket.read(){
+                    match &mut websocket.read() {
                         Ok(m) => {
                             if m.len() > 0 {
                                 match m {
                                     Message::Text(data) => unsafe {
                                         let mut vdata = vec![0; data.as_bytes().len()];
-                                        std::ptr::copy(data.as_mut_ptr(), vdata.as_mut_ptr(), data.as_bytes().len());
+                                        std::ptr::copy(
+                                            data.as_mut_ptr(),
+                                            vdata.as_mut_ptr(),
+                                            data.as_bytes().len(),
+                                        );
                                         pipeline.write(vdata).unwrap();
                                     },
                                     Message::Binary(data) => unsafe {
                                         let mut buf: Vec<u8> = vec![0; data.len()];
-                                        std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.len());
+                                        std::ptr::copy(
+                                            data.as_mut_ptr(),
+                                            buf.as_mut_ptr(),
+                                            data.len(),
+                                        );
                                         pipeline.write(buf).unwrap();
                                     },
                                     Message::Ping(_)
@@ -273,8 +284,8 @@ pub mod websocket_entry {
                         }
                     }
                 }
-                
-                std::thread::sleep(Duration::from_millis(10));
+
+                std::thread::sleep(Duration::from_millis(self.loop_time));
             }
         }
     }

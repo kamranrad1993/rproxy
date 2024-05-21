@@ -16,7 +16,8 @@ Usage:
 
 Options:
   -e entry
-  -s define step           
+  -s define step 
+  -t loop_time(default is 10ms)          
   -h, --help     Print help
 
 Entries:
@@ -68,6 +69,8 @@ fn main() {
     }
     let pipeline = Pipeline::new(steps, Some(1024));
 
+    let loop_time = pargs.opt_value_from_str::<&str, u64>("-t").unwrap();
+
     let entry = pargs.opt_value_from_str::<&str, String>("-e").unwrap();
     if entry == None {
         panic!("no entry defined");
@@ -80,15 +83,15 @@ fn main() {
     let config = Some(res.get(1).unwrap().as_str());
     match protocol {
         Some("ws") => {
-            let mut entry = WebsocketEntry::new(entry, pipeline);
+            let mut entry = WebsocketEntry::new(entry, pipeline, loop_time.unwrap());
             entry.listen();
         }
         Some("stdio") => {
-            let mut entry = STDioEntry::new(String::new(), pipeline);
+            let mut entry = STDioEntry::new(String::new(), pipeline, loop_time.unwrap());
             entry.listen();
         }
         Some("tcp") => {
-            let mut entry = TCPEntry::new(entry, pipeline);
+            let mut entry = TCPEntry::new(entry, pipeline, loop_time.unwrap());
             entry.listen();
         }
         None | _ => {

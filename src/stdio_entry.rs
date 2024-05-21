@@ -12,6 +12,7 @@ pub mod io_entry {
 
     pub struct STDioEntry {
         pipeline: Pipeline,
+        loop_time: u64,
     }
 
     impl Entry for STDioEntry {
@@ -27,8 +28,8 @@ pub mod io_entry {
             }
         }
 
-        fn new(config: String, pipeline: crate::Pipeline) -> Self {
-            STDioEntry { pipeline: pipeline }
+        fn new(config: String, pipeline: crate::Pipeline, loop_time: u64) -> Self {
+            STDioEntry { pipeline: pipeline, loop_time: loop_time }
         }
 
         fn listen(&mut self) {
@@ -47,7 +48,7 @@ pub mod io_entry {
                         self.flush().unwrap();
                     }
                 }
-                thread::sleep(Duration::from_millis(5));
+                thread::sleep(Duration::from_millis(self.loop_time));
             }
         }
     }
@@ -56,6 +57,7 @@ pub mod io_entry {
         fn clone(&self) -> STDioEntry {
             STDioEntry {
                 pipeline: self.pipeline.clone(),
+                loop_time: self.loop_time
             }
         }
     }

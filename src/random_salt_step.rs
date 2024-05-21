@@ -23,8 +23,8 @@ pub mod random_salt_step {
         fn len(&self) -> std::io::Result<usize> {
             // Ok(self.forward_buffer.len())
             match self.pipeline_direction {
-                PipelineDirection::Forward => Ok(self.forward_buffer.len() + self.salt_lengh),
-                PipelineDirection::Backward => Ok(self.backward_buffer.len() + self.salt_lengh),
+                PipelineDirection::Forward => Ok(self.forward_buffer.len()),
+                PipelineDirection::Backward => Ok(self.backward_buffer.len()),
             }
         }
 

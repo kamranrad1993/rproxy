@@ -18,6 +18,7 @@ pub mod tcp_entry {
         tcp_server: TcpListener,
         address: String,
         pipeline: Pipeline,
+        loop_time: u64,
     }
 
     impl Clone for TCPEntry {
@@ -26,12 +27,13 @@ pub mod tcp_entry {
                 tcp_server: self.tcp_server.try_clone().unwrap(),
                 address: self.address.clone(),
                 pipeline: self.pipeline.clone(),
+                loop_time: self.loop_time
             }
         }
     }
 
     impl Entry for TCPEntry {
-        fn new(config: String, pipeline: crate::Pipeline) -> Self {
+        fn new(config: String, pipeline: crate::Pipeline, loop_time: u64) -> Self {
             let re = Regex::new(r"((https|wss|ws|http)?:\/\/)([^:/$]{1,})(?::(\d{1,}))").unwrap();
             if !re.is_match(&config) {
                 panic!(
@@ -51,6 +53,7 @@ pub mod tcp_entry {
                 tcp_server: server,
                 address: config,
                 pipeline: pipeline,
+                loop_time: loop_time
             }
         }
 
@@ -88,14 +91,13 @@ pub mod tcp_entry {
     }
 
     impl TCPEntry {
-
         fn is_tcp_connection_alive(&self, stream: &TcpStream) -> io::Result<bool> {
             let raw_fd = stream.as_raw_fd();
-        
+
             // Call ioctl with SIOCOUTQ to get the amount of unsent data in the socket's output buffer
             let mut outq: c_int = 0;
             let res = unsafe { libc::ioctl(raw_fd, libc::SIOCOUTQNSD, &mut outq) };
-        
+
             if res == -1 {
                 // Error occurred while calling ioctl
                 Err(io::Error::last_os_error())
@@ -109,7 +111,7 @@ pub mod tcp_entry {
             loop {
                 // match self.is_tcp_connection_alive(&stream) {
                 //     Ok(result) => {
-                        
+
                 //     },
                 //     Err(e) => {
                 //         println!("{e}");
@@ -132,29 +134,29 @@ pub mod tcp_entry {
                                 }
                             }
                         }
-                    },
+                    }
                     Err(e) => {
                         println!("Error reading from stream: {}", e);
-                    },
+                    }
                 }
-        
+
+                // std::thread::sleep(Duration::from_millis(10));
+
                 if self.pipeline.read_available() {
-                    let data = pipeline.read().unwrap(); 
+                    let data = pipeline.read().unwrap();
                     if !data.is_empty() {
                         match stream.write_all(&data) {
-                            Ok(_) => {
-                            }
+                            Ok(_) => {}
                             Err(e) => {
                                 println!("Error writing to stream: {}", e);
                                 break;
                             }
                         }
                     }
-                    
                 }
 
-                std::thread::sleep(Duration::from_millis(10));
+                std::thread::sleep(Duration::from_millis(self.loop_time));
             }
-        }   
+        }
     }
 }

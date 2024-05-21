@@ -180,7 +180,7 @@ pub mod wss_destination {
 
             #[cfg(feature = "ubuntu-22")]
             let mut ssl_connector_builder: SslConnectorBuilder =
-                SslConnector::ConnectConfigurationbuilder(SslMethod::tls()).unwrap();
+                SslConnector::builder(SslMethod::tls()).unwrap();
             #[cfg(feature = "ubuntu-20")]
                 let mut ssl_connector_builder: SslConnectorBuilder =
                     SslConnector::builder(SslMethod::tls()).unwrap();

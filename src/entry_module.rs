@@ -7,7 +7,7 @@ pub mod entry_module {
     use crate::Pipeline;
 
     pub trait Entry : Clone {
-        fn new(config: String, pipeline: Pipeline) -> Self;
+        fn new(config: String, pipeline: Pipeline, loop_time: u64) -> Self;
         // fn len(&self) -> std::io::Result<usize>;
         // fn read(&mut self);
         // fn write(&mut self);

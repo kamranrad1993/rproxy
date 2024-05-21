@@ -24,7 +24,8 @@
             // "args" : "-e tcp://127.0.0.1:6060 -s b64:fw -s ws://x2.bikehike.ir:80",
             // "args" : "-e ws://0.0.0.0:6060 -s stdio:",
             // "args" : "-e tcp://127.0.0.1:6666 -s salt:bw-10 -s stdio:",
-            "args" : "-e tcp://127.0.0.1:6666 -s salt:bw-10 -s tcp://127.0.0.1:22 ",
+            "args" : "-t 50 -e tcp://127.0.0.1:6666 -s salt:bw-10 -s tcp://127.0.0.1:22 ",
+            // "args" : "-e tcp://127.0.0.1:6666 -s tcp://127.0.0.1:22 ",
             "env": {
                 "RUST_BACKTRACE": "1",
             },
