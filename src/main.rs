@@ -1,7 +1,14 @@
+use openssl::conf;
 use proxy::{
-    Base64, Entry, Pipeline, PipelineStep, STDioEntry, STDioStep, TCPEntry, TCPStep, WebsocketDestination, WebsocketEntry, WssDestination
+    Base64, Entry, Pipeline, PipelineStep, STDioEntry, STDioStep, TCPEntry, TCPStep,
+    WebsocketDestination, WebsocketEntry, WssDestination, RSult
 };
-use std::{str::FromStr, sync::{Arc, Mutex}, thread, time::Duration};
+use std::{
+    str::FromStr,
+    sync::{Arc, Mutex},
+    thread,
+    time::Duration,
+};
 
 const USAGE: &'static str = "
 Usage: 
@@ -22,6 +29,7 @@ Steps:
   ws://
   b64:fw b64:bw
   tcp://
+  salt:fw-len salf:bw-len
 ";
 
 fn main() {
@@ -52,6 +60,7 @@ fn main() {
             Some("wss") => steps.push(Box::new(WssDestination::new(step.as_str()))),
             Some("b64") => steps.push(Box::new(Base64::new(config))),
             Some("tcp") => steps.push(Box::new(TCPStep::new(step.as_str()))),
+            Some("salt") => steps.push(Box::new(RSult::new(config))),
             None | _ => {
                 print!("unknown step : {}", step);
             }
@@ -91,5 +100,4 @@ fn main() {
     // if !remaining.is_empty() {
     //     eprintln!("Warning: unused arguments left: {:?}.", remaining);
     // }
-
 }

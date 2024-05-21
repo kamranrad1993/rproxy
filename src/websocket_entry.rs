@@ -237,11 +237,8 @@ pub mod websocket_entry {
                             if m.len() > 0 {
                                 match m {
                                     Message::Text(data) => unsafe {
-                                        let mut vdata = Vec::<u8>::from_raw_parts(
-                                            data.as_mut_ptr(),
-                                            data.as_bytes().len(),
-                                            data.as_bytes().len(),
-                                        );
+                                        let mut vdata = vec![0; data.as_bytes().len()];
+                                        std::ptr::copy(data.as_mut_ptr(), vdata.as_mut_ptr(), data.as_bytes().len());
                                         pipeline.write(vdata).unwrap();
                                     },
                                     Message::Binary(data) => unsafe {

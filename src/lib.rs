@@ -27,3 +27,6 @@ pub use base64_step::base64::Base64;
 mod tcp_step;
 pub use tcp_step::tcp_step::TCPStep;
 
+mod random_salt_step;
+pub use random_salt_step::random_salt_step::RSult;
+

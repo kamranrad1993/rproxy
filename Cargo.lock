@@ -521,6 +521,7 @@ dependencies = [
  "openssl",
  "os_info",
  "pico-args",
+ "rand",
  "regex",
  "strum",
  "tungstenite",

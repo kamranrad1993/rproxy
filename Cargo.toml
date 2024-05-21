@@ -24,3 +24,4 @@ base64 = "0.22.0"
 openssl = { version = "0.10.64", features = ["bindgen", "vendored", "default"] }
 regex = "1.10.4"
 http = "1.1.0"
+rand = "0.8.5"
