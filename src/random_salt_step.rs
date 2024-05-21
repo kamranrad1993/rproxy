@@ -78,10 +78,10 @@ pub mod random_salt_step {
                         self.forward_buffer.extend(buf);
                         Ok(self.forward_buffer.len())
                     } else {
-                        // self.forward_buffer.extend(buf[self.salt_lengh-1..].to_vec());
-                        // Ok(buf.len() - self.salt_lengh)
-                        self.forward_buffer.extend(buf);
-                        Ok(buf.len())
+                        self.forward_buffer.extend(buf[self.salt_lengh..].to_vec());
+                        Ok(buf.len() - self.salt_lengh)
+                        // self.forward_buffer.extend(buf);
+                        // Ok(buf.len())
                     }
                 }
                 PipelineDirection::Backward => {
@@ -93,10 +93,10 @@ pub mod random_salt_step {
                         self.backward_buffer.extend(buf);
                         Ok(self.backward_buffer.len())
                     } else {
-                        // self.backward_buffer.extend(buf[self.salt_lengh-1..].to_vec());
-                        // Ok(buf.len() - self.salt_lengh)
-                        self.backward_buffer.extend(buf);
-                        Ok(buf.len())
+                        self.backward_buffer.extend(buf[self.salt_lengh..].to_vec());
+                        Ok(buf.len() - self.salt_lengh)
+                        // self.backward_buffer.extend(buf);
+                        // Ok(buf.len())
                     }
                 }
             }
