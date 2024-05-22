@@ -57,7 +57,7 @@ pub mod tcp_entry {
             }
         }
 
-        fn len(&self, stream: &mut dyn AsRawFd) -> std::io::Result<usize> {
+        fn len(stream: &mut dyn AsRawFd) -> std::io::Result<usize> {
             let mut available: usize = 0;
             let result: i32 =
                 unsafe { libc::ioctl(stream.as_raw_fd(), libc::FIONREAD, &mut available) };
@@ -75,11 +75,10 @@ pub mod tcp_entry {
                     Ok(conn) => {
                         println!("new client : {}", conn.peer_addr().unwrap());
 
-                        let cloned_pipeline = self.pipeline.clone();
-                        let cloned_self = self.clone();
+                        let mut cloned_self = self.clone();
 
                         let read_write_thread = thread::spawn(move || {
-                            cloned_self.handle_pipeline(conn, cloned_pipeline);
+                            cloned_self.handle_pipeline(conn);
                         });
                     }
                     Err(e) => {
@@ -107,7 +106,7 @@ pub mod tcp_entry {
             }
         }
 
-        fn handle_pipeline(&self, mut stream: TcpStream, mut pipeline: Pipeline) {
+        fn handle_pipeline(&mut self, mut stream: TcpStream) {
             loop {
                 // match self.is_tcp_connection_alive(&stream) {
                 //     Ok(result) => {
@@ -119,14 +118,14 @@ pub mod tcp_entry {
                 //     },
                 // }
 
-                match self.len(&mut stream) {
+                match TCPEntry::len(&mut stream) {
                     Ok(len) => {
                         if len > 0 {
                             let mut buf = vec![0; len];
                             match stream.read_exact(&mut buf) {
                                 Ok(_) => {
                                     let len = buf.len();
-                                    let final_size = pipeline.write(buf).unwrap();
+                                    let final_size = self.pipeline.write(buf).unwrap();
                                 }
                                 Err(e) => {
                                     println!("Error reading from stream: {}", e);
@@ -143,7 +142,7 @@ pub mod tcp_entry {
                 // std::thread::sleep(Duration::from_millis(10));
 
                 if self.pipeline.read_available() {
-                    let data = pipeline.read().unwrap();
+                    let data = self.pipeline.read().unwrap();
                     if !data.is_empty() {
                         match stream.write_all(&data) {
                             Ok(_) => {}

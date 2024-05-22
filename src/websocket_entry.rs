@@ -60,7 +60,7 @@ pub mod websocket_entry {
             }
         }
 
-        fn len(&self, stream: &mut dyn AsRawFd) -> std::io::Result<usize> {
+        fn len(stream: &mut dyn AsRawFd) -> std::io::Result<usize> {
             let mut available: usize = 0;
             let result: i32 =
                 unsafe { libc::ioctl(stream.as_raw_fd(), libc::FIONREAD, &mut available) };
@@ -80,11 +80,10 @@ pub mod websocket_entry {
                         let mut websocket = accept(conn.try_clone().unwrap());
                         match websocket {
                             Ok(websocket) => {
-                                let cloned_pipeline = self.pipeline.clone();
-                                let cloned_self = self.clone();
+                                let mut cloned_self = self.clone();
 
                                 let read_write_thread = thread::spawn(move || {
-                                    cloned_self.handle_pipeline(websocket, conn, cloned_pipeline);
+                                    cloned_self.handle_pipeline(websocket, conn);
                                 });
                             }
                             Err(e) => {
@@ -226,14 +225,55 @@ pub mod websocket_entry {
             }
         }
 
-        fn handle_pipeline(
-            &self,
-            mut websocket: WebSocket<TcpStream>,
-            mut stream: TcpStream,
-            mut pipeline: Pipeline,
-        ) {
+        fn handle_pipeline_(&mut self, mut websocket: WebSocket<TcpStream>) {
             loop {
-                let len = self.len(&mut stream).unwrap();
+                // Read data from the WebSocket connection
+                let mut msg = match websocket.read() {
+                    Ok(msg) => msg,
+                    Err(e) => {
+                        eprintln!("Error reading WebSocket message: {}", e);
+                        break;
+                    }
+                };
+
+                match &mut msg {
+                    Message::Text(data) => unsafe {
+                        let mut vdata = vec![0; data.as_bytes().len()];
+                        std::ptr::copy(
+                            data.as_mut_ptr(),
+                            vdata.as_mut_ptr(),
+                            data.as_bytes().len(),
+                        );
+                        self.pipeline.write(vdata).unwrap();
+                    },
+                    Message::Binary(data) => unsafe {
+                        let mut buf: Vec<u8> = vec![0; data.len()];
+                        std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.len());
+                        self.pipeline.write(buf).unwrap();
+                    },
+                    Message::Ping(_) | Message::Pong(_) | Message::Close(_) | Message::Frame(_) => {
+                    }
+                }
+
+                if self.pipeline.read_available() {
+                    let data = self.pipeline.read().unwrap();
+                    if !data.is_empty() {
+                        let msg = Message::Binary(data);
+                        match websocket.send(msg) {
+                            Ok(_) => {}
+                            Err(e) => {
+                                println!("Error writing to stream: {}", e);
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        fn handle_pipeline(&mut self, mut websocket: WebSocket<TcpStream>, mut stream: TcpStream) {
+            loop {
+                let len = WebsocketEntry::len(&mut stream).unwrap();
                 if len > 0 {
                     match &mut websocket.read() {
                         Ok(m) => {
@@ -246,7 +286,7 @@ pub mod websocket_entry {
                                             vdata.as_mut_ptr(),
                                             data.as_bytes().len(),
                                         );
-                                        pipeline.write(vdata).unwrap();
+                                        self.pipeline.write(vdata).unwrap();
                                     },
                                     Message::Binary(data) => unsafe {
                                         let mut buf: Vec<u8> = vec![0; data.len()];
@@ -255,7 +295,7 @@ pub mod websocket_entry {
                                             buf.as_mut_ptr(),
                                             data.len(),
                                         );
-                                        pipeline.write(buf).unwrap();
+                                        self.pipeline.write(buf).unwrap();
                                     },
                                     Message::Ping(_)
                                     | Message::Pong(_)
@@ -272,7 +312,7 @@ pub mod websocket_entry {
                 }
 
                 if self.pipeline.read_available() {
-                    let data = pipeline.read().unwrap();
+                    let data = self.pipeline.read().unwrap();
                     if !data.is_empty() {
                         let msg = Message::Binary(data);
                         match websocket.send(msg) {

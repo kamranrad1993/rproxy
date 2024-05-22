@@ -16,7 +16,7 @@ pub mod io_entry {
     }
 
     impl Entry for STDioEntry {
-        fn len(&self, stream: &mut dyn AsRawFd) -> std::io::Result<usize> {
+        fn len(stream: &mut dyn AsRawFd) -> std::io::Result<usize> {
             let mut available: usize = 0;
             let result: i32 =
                 unsafe { libc::ioctl(stream.as_raw_fd(), libc::FIONREAD, &mut available) };
@@ -34,7 +34,7 @@ pub mod io_entry {
 
         fn listen(&mut self) {
             loop {
-                let len = self.len(&mut std::io::stdin()).unwrap();
+                let len = STDioEntry::len(&mut std::io::stdin()).unwrap();
                 if len > 0 {
                     let mut buf: Vec<u8> = vec![0; len];
                     self.read(buf.as_mut_slice()).unwrap();

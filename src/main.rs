@@ -1,7 +1,8 @@
 use openssl::conf;
 use proxy::{
     Base64, Entry, Pipeline, PipelineStep, STDioEntry, STDioStep, TCPEntry, TCPStep,
-    WebsocketDestination, WebsocketEntry, WssDestination, RSult
+    WebsocketDestination, WebsocketEntry, WssDestination, RSult, TcpEntryNonBlocking,
+    WSEntryNonBlocking
 };
 use std::{
     str::FromStr,
@@ -91,7 +92,7 @@ fn main() {
             entry.listen();
         }
         Some("tcp") => {
-            let mut entry = TCPEntry::new(entry, pipeline, loop_time.unwrap());
+            let mut entry = TcpEntryNonBlocking::new(entry, pipeline, loop_time.unwrap());
             entry.listen();
         }
         None | _ => {

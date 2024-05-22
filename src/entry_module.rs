@@ -11,7 +11,7 @@ pub mod entry_module {
         // fn len(&self) -> std::io::Result<usize>;
         // fn read(&mut self);
         // fn write(&mut self);
-        fn len(&self, stream: &mut dyn AsRawFd) -> std::io::Result<usize>;
+        fn len(stream: &mut dyn AsRawFd) -> std::io::Result<usize>;
         fn listen(&mut self);
     }
 }

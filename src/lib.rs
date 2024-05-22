@@ -30,3 +30,8 @@ pub use tcp_step::tcp_step::TCPStep;
 mod random_salt_step;
 pub use random_salt_step::random_salt_step::RSult;
 
+mod tcp_entry_nonblocking;
+pub use tcp_entry_nonblocking::tcp_entry_nonblocking::TcpEntryNonBlocking;
+
+mod websocket_entry_nonblocking;
+pub use websocket_entry_nonblocking::websocket_entry_nonblocking::WSEntryNonBlocking;
