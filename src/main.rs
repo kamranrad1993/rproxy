@@ -84,7 +84,7 @@ fn main() {
     let config = Some(res.get(1).unwrap().as_str());
     match protocol {
         Some("ws") => {
-            let mut entry = WebsocketEntry::new(entry, pipeline, loop_time.unwrap());
+            let mut entry = WSEntryNonBlocking::new(entry, pipeline, loop_time.unwrap());
             entry.listen();
         }
         Some("stdio") => {

@@ -1,14 +1,16 @@
 pub mod websocket_entry_nonblocking {
     use crate::{Entry, Pipeline};
-    use http::Response;
+    use http::{Request, Response};
+    use openssl::sha::Sha1;
     use polling::{Event, Events, Poller};
     use regex::Regex;
-    use tungstenite::protocol::Role;
     use std::collections::HashMap;
     use std::io::{self, Read, Write};
     use std::net::{SocketAddr, TcpListener, TcpStream};
     use std::os::fd::AsRawFd;
+    use std::str;
     use std::thread;
+    use tungstenite::protocol::Role;
     use tungstenite::{
         accept,
         error::ProtocolError,
@@ -42,6 +44,7 @@ pub mod websocket_entry_nonblocking {
             addr.push_str(":");
             addr.push_str(uri.port().unwrap().as_str());
             let mut listener = TcpListener::bind(addr).unwrap();
+            listener.set_nonblocking(true).unwrap();
             let poller = Poller::new().unwrap();
 
             unsafe {
@@ -82,8 +85,8 @@ pub mod websocket_entry_nonblocking {
                         let (client, client_address) = self.listener.accept().unwrap();
 
                         let mut websocket = accept(client.try_clone().unwrap());
-                        // match websocket {
-                        //     Ok(websocket) => {
+                        match websocket {
+                            Ok(websocket) => {
                                 let client_key = self.connections.len() + self.listener_key;
                                 self.connections
                                     .insert(client_key, (client, client_address));
@@ -92,20 +95,20 @@ pub mod websocket_entry_nonblocking {
                                 thread::spawn(move || {
                                     cloned_self.handle_connection(ev).unwrap();
                                 });
-                            // }
-                            // Err(e) => {
-                            //     println!("{}", e);
-                            //     match e {
-                            //         tungstenite::HandshakeError::Interrupted(mid_handshake) => {
-                            //             println!("midhandshake");
-                            //         }
-                            //         tungstenite::HandshakeError::Failure(e) => {
-                            //             self.handle_handshake_error(e, client);
-                            //         }
-                            //     }
-                            // }
-                        // }
-                        
+                            }
+                            Err(e) => {
+                                println!("{}", e);
+                                match e {
+                                    tungstenite::HandshakeError::Interrupted(mid_handshake) => {
+                                        println!("midhandshake");
+                                    }
+                                    tungstenite::HandshakeError::Failure(e) => {
+                                        self.handle_handshake_error(e, client);
+                                    }
+                                }
+                            }
+                        }
+
                         self.poller
                             .modify(&self.listener, Event::readable(self.listener_key))
                             .unwrap();
@@ -119,10 +122,7 @@ pub mod websocket_entry_nonblocking {
         fn clone(&self) -> Self {
             let mut connections = HashMap::new();
             for data in self.connections.iter() {
-                connections.insert(data.0.clone(), (
-                    data.1.0.try_clone().unwrap(), 
-                    data.1.1,
-                ));
+                connections.insert(data.0.clone(), (data.1 .0.try_clone().unwrap(), data.1 .1));
             }
             Self {
                 poller: Poller::new().unwrap(),
@@ -254,20 +254,70 @@ pub mod websocket_entry_nonblocking {
             }
         }
 
+        fn handshake(mut stream: TcpStream) {
+            let mut buffer = [0; 1024];
+            let read_size = stream.read(&mut buffer).unwrap();
+
+            // Parse the HTTP request
+            let request = Request::builder().body(()).unwrap();
+            let request_str = str::from_utf8(&buffer[..read_size]).unwrap();
+            let headers: Vec<&str> = request_str.split("\r\n").collect();
+            let mut websocket_key = String::new();
+
+            for header in headers {
+                if header.starts_with("Sec-WebSocket-Key:") {
+                    websocket_key = header.split(": ").nth(1).unwrap().to_string();
+                    break;
+                }
+            }
+
+            if websocket_key.is_empty() {
+                eprintln!("WebSocket key not found in headers");
+                return;
+            }
+
+            // Create WebSocket accept key
+            let magic_string = websocket_key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
+            let mut hasher = Sha1::new();
+            hasher.update(magic_string.as_bytes());
+            let result = hasher.finish();
+            let accept_key = base64::encode(result);
+
+            // Send WebSocket handshake response
+            let response = format!(
+                "HTTP/1.1 101 Switching Protocols\r\n\
+                         Connection: Upgrade\r\n\
+                         Upgrade: websocket\r\n\
+                         Sec-WebSocket-Accept: {}\r\n\r\n",
+                accept_key
+            );
+            stream.write_all(response.as_bytes()).unwrap();
+            stream.flush().unwrap();
+        }
+
         fn handle_connection(&mut self, event: Event) -> io::Result<()> {
             let client = self.connections.get_mut(&event.key).unwrap();
+            // client.0.flush().unwrap();
+            // client.0.set_nonblocking(true).unwrap();
+
 
             unsafe {
                 self.poller.add(&client.0, Event::all(event.key))?;
             }
             let mut events = Events::new();
 
+            // WSEntryNonBlocking::handshake(client.0.try_clone().unwrap());
+
             loop {
                 self.poller.wait(&mut events, None).unwrap();
 
                 for ev in events.iter() {
                     if ev.key == event.key {
-                        let mut websocket = WebSocket::from_raw_socket(client.0.try_clone().unwrap(), Role::Client, None);
+                        let mut websocket = WebSocket::from_raw_socket(
+                            client.0.try_clone().unwrap(),
+                            Role::Client,
+                            None,
+                        );
                         if ev.readable {
                             match WSEntryNonBlocking::len(&mut client.0) {
                                 Ok(len) => {
@@ -277,7 +327,8 @@ pub mod websocket_entry_nonblocking {
                                                 if m.len() > 0 {
                                                     match m {
                                                         Message::Text(data) => unsafe {
-                                                            let mut vdata = vec![0; data.as_bytes().len()];
+                                                            let mut vdata =
+                                                                vec![0; data.as_bytes().len()];
                                                             std::ptr::copy(
                                                                 data.as_mut_ptr(),
                                                                 vdata.as_mut_ptr(),
@@ -286,7 +337,8 @@ pub mod websocket_entry_nonblocking {
                                                             self.pipeline.write(vdata).unwrap();
                                                         },
                                                         Message::Binary(data) => unsafe {
-                                                            let mut buf: Vec<u8> = vec![0; data.len()];
+                                                            let mut buf: Vec<u8> =
+                                                                vec![0; data.len()];
                                                             std::ptr::copy(
                                                                 data.as_mut_ptr(),
                                                                 buf.as_mut_ptr(),
