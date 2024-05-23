@@ -80,8 +80,7 @@ pub mod ws_destination {
             let msg = Message::Binary(vec);
             let result = self.get_websocket().send(msg);
             match result {
-                Ok(_) => {
-                    Ok(buf.len())},
+                Ok(_) => Ok(buf.len()),
                 Err(error) => {
                     panic!("{}", error);
                 }
@@ -182,8 +181,8 @@ pub mod wss_destination {
             let mut ssl_connector_builder: SslConnectorBuilder =
                 SslConnector::ConnectConfigurationbuilder(SslMethod::tls()).unwrap();
             #[cfg(feature = "ubuntu-20")]
-                let mut ssl_connector_builder: SslConnectorBuilder =
-                    SslConnector::builder(SslMethod::tls()).unwrap();
+            let mut ssl_connector_builder: SslConnectorBuilder =
+                SslConnector::builder(SslMethod::tls()).unwrap();
 
             // ssl_connector_builder.set_verify(SslVerifyMode::NONE);
             // ssl_connector_builder.set_verify_callback(SslVerifyMode::NONE, |r, context|{
@@ -269,9 +268,12 @@ pub mod wss_destination {
                         std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.len());
                         Ok(data.len())
                     },
-                    Message::Ping(_) | Message::Pong(_) | Message::Close(_) | Message::Frame(_) => {
-                        Ok(0)
+                    Message::Close(e) => {
+                        let errno = std::io::Error::last_os_error();
+                        Err(errno)
+                        // Err("{}", e.unwrap().code);
                     }
+                    Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => Ok(0),
                 }
                 // self.tcp_stream.read(buf)
             }
