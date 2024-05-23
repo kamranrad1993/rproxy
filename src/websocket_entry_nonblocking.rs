@@ -1,5 +1,7 @@
 pub mod websocket_entry_nonblocking {
+    use crate::pipeline_module::pipeline::IOError;
     use crate::{Entry, Pipeline};
+    use bytes::{self, BytesMut};
     use http::{Request, Response};
     use openssl::sha::Sha1;
     use polling::{Event, Events, Poller};
@@ -10,14 +12,16 @@ pub mod websocket_entry_nonblocking {
     use std::os::fd::AsRawFd;
     use std::str;
     use std::thread;
+    use tokio_util::codec::{Decoder, Encoder};
     use tungstenite::protocol::Role;
     use tungstenite::{
         accept,
         error::ProtocolError,
         handshake::{server, MidHandshake},
         http::Uri,
-        stream, Error, Message, WebSocket,
+        stream, Error, WebSocket,
     };
+    use websocket_codec::{self, MessageCodec, Message};
 
     pub struct WSEntryNonBlocking {
         poller: Poller,
@@ -43,7 +47,7 @@ pub mod websocket_entry_nonblocking {
             let mut addr = String::from(uri.host().unwrap());
             addr.push_str(":");
             addr.push_str(uri.port().unwrap().as_str());
-            let mut listener = TcpListener::bind(addr).unwrap();
+            let listener = TcpListener::bind(addr).unwrap();
             listener.set_nonblocking(true).unwrap();
             let poller = Poller::new().unwrap();
 
@@ -84,30 +88,15 @@ pub mod websocket_entry_nonblocking {
                     if ev.key == self.listener_key {
                         let (client, client_address) = self.listener.accept().unwrap();
 
-                        let mut websocket = accept(client.try_clone().unwrap());
-                        match websocket {
-                            Ok(websocket) => {
-                                let client_key = self.connections.len() + self.listener_key;
-                                self.connections
-                                    .insert(client_key, (client, client_address));
-                                let mut cloned_self = self.clone();
+                        // client.set_nonblocking(true).unwrap();
+                        let client_key = self.connections.len() + self.listener_key + 1;
+                        self.connections
+                            .insert(client_key, (client, client_address));
+                        let mut cloned_self = self.clone();
 
-                                thread::spawn(move || {
-                                    cloned_self.handle_connection(ev).unwrap();
-                                });
-                            }
-                            Err(e) => {
-                                println!("{}", e);
-                                match e {
-                                    tungstenite::HandshakeError::Interrupted(mid_handshake) => {
-                                        println!("midhandshake");
-                                    }
-                                    tungstenite::HandshakeError::Failure(e) => {
-                                        self.handle_handshake_error(e, client);
-                                    }
-                                }
-                            }
-                        }
+                        thread::spawn(move || {
+                            cloned_self.handle_connection(client_key);
+                        });
 
                         self.poller
                             .modify(&self.listener, Event::readable(self.listener_key))
@@ -254,13 +243,14 @@ pub mod websocket_entry_nonblocking {
             }
         }
 
-        fn handshake(mut stream: TcpStream) {
+        fn handshake(mut stream: TcpStream) -> std::io::Result<()> {
             let mut buffer = [0; 1024];
             let read_size = stream.read(&mut buffer).unwrap();
 
             // Parse the HTTP request
             let request = Request::builder().body(()).unwrap();
             let request_str = str::from_utf8(&buffer[..read_size]).unwrap();
+            println!("request : {} ", request_str);
             let headers: Vec<&str> = request_str.split("\r\n").collect();
             let mut websocket_key = String::new();
 
@@ -272,8 +262,8 @@ pub mod websocket_entry_nonblocking {
             }
 
             if websocket_key.is_empty() {
-                eprintln!("WebSocket key not found in headers");
-                return;
+                let e = io::Error::new(io::ErrorKind::NotFound,  "WebSocket key not found in headers");
+                return Err(e)
             }
 
             // Create WebSocket accept key
@@ -293,70 +283,57 @@ pub mod websocket_entry_nonblocking {
             );
             stream.write_all(response.as_bytes()).unwrap();
             stream.flush().unwrap();
+            Ok(())
         }
 
-        fn handle_connection(&mut self, event: Event) -> io::Result<()> {
-            let client = self.connections.get_mut(&event.key).unwrap();
-            // client.0.flush().unwrap();
-            // client.0.set_nonblocking(true).unwrap();
+        fn handle_connection(&mut self, client_key: usize) {
+            let client = self.connections.get_mut(&client_key).unwrap();
+            client.0.set_nonblocking(true).unwrap();
 
 
             unsafe {
-                self.poller.add(&client.0, Event::all(event.key))?;
+                self.poller.add(&client.0, Event::all(client_key)).unwrap();
             }
             let mut events = Events::new();
 
-            // WSEntryNonBlocking::handshake(client.0.try_clone().unwrap());
+            let mut handhsaked = false;
 
             loop {
                 self.poller.wait(&mut events, None).unwrap();
 
                 for ev in events.iter() {
-                    if ev.key == event.key {
-                        let mut websocket = WebSocket::from_raw_socket(
-                            client.0.try_clone().unwrap(),
-                            Role::Client,
-                            None,
-                        );
+                    if ev.key == client_key {
                         if ev.readable {
+                            if !handhsaked {
+                                WSEntryNonBlocking::handshake(client.0.try_clone().unwrap()).unwrap();
+                                handhsaked = true;
+                                continue;
+                            }
                             match WSEntryNonBlocking::len(&mut client.0) {
                                 Ok(len) => {
                                     if len > 0 {
-                                        match &mut websocket.read() {
-                                            Ok(m) => {
-                                                if m.len() > 0 {
-                                                    match m {
-                                                        Message::Text(data) => unsafe {
-                                                            let mut vdata =
-                                                                vec![0; data.as_bytes().len()];
-                                                            std::ptr::copy(
-                                                                data.as_mut_ptr(),
-                                                                vdata.as_mut_ptr(),
-                                                                data.as_bytes().len(),
-                                                            );
-                                                            self.pipeline.write(vdata).unwrap();
-                                                        },
-                                                        Message::Binary(data) => unsafe {
-                                                            let mut buf: Vec<u8> =
-                                                                vec![0; data.len()];
-                                                            std::ptr::copy(
-                                                                data.as_mut_ptr(),
-                                                                buf.as_mut_ptr(),
-                                                                data.len(),
-                                                            );
-                                                            self.pipeline.write(buf).unwrap();
-                                                        },
-                                                        Message::Ping(_)
-                                                        | Message::Pong(_)
-                                                        | Message::Close(_)
-                                                        | Message::Frame(_) => {}
-                                                    }
+                                        let mut buf: BytesMut = BytesMut::new();
+                                        buf.resize(len, 0u8);
+                                        client.0.read(buf.as_mut()).unwrap();
+                                        let mut msgc = websocket_codec::MessageCodec::server()
+                                            .decode(&mut buf)
+                                            .unwrap();
+
+                                        match &mut msgc {
+                                            Some(msg) => match msg.opcode() {
+                                                websocket_codec::Opcode::Text
+                                                | websocket_codec::Opcode::Binary => {
+                                                    self.pipeline
+                                                        .write(msg.data().to_vec())
+                                                        .unwrap();
                                                 }
-                                            }
-                                            Err(e) => {
-                                                println!("Error reading from stream: {}", e);
-                                                break;
-                                            }
+                                                websocket_codec::Opcode::Close => {
+                                                    break;
+                                                }
+                                                websocket_codec::Opcode::Ping
+                                                | websocket_codec::Opcode::Pong => {}
+                                            },
+                                            None => {}
                                         }
                                     }
                                 }
@@ -370,13 +347,17 @@ pub mod websocket_entry_nonblocking {
                             if self.pipeline.read_available() {
                                 let data = self.pipeline.read().unwrap();
                                 if !data.is_empty() {
-                                    let msg = Message::Binary(data);
-                                    match websocket.send(msg) {
-                                        Ok(_) => {}
-                                        Err(e) => {
-                                            println!("Error writing to stream: {}", e);
-                                            break;
-                                        }
+                                    let msg = Message::binary(data);
+                                    let mut buf: BytesMut = BytesMut::new();
+                                    MessageCodec::server().encode(&msg,&mut buf).unwrap();
+                                    
+                                    if let Err(e) = client.0.write(buf.to_vec().as_slice()) {
+                                        println!("Error writing to stream: {}", e);
+                                        break;
+                                    }
+                                    if let Err(e) = client.0.flush() {
+                                        println!("Error flush stream: {}", e);
+                                        break;
                                     }
                                 }
                             }
@@ -385,11 +366,9 @@ pub mod websocket_entry_nonblocking {
                 }
 
                 self.poller
-                    .modify(&client.0, Event::all(event.key))
+                    .modify(&client.0, Event::all(client_key))
                     .unwrap();
             }
-
-            Ok(())
         }
     }
 }
