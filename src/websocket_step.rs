@@ -1,13 +1,16 @@
 #[allow(non_snake_case, unused_variables, dead_code)]
 pub mod ws_destination {
-    use std::io::{Read, Write};
+    use bytes::BytesMut;
+    use std::io::{self, Read, Write};
     use std::net::TcpStream;
     use std::os::fd::AsRawFd;
     use std::str::FromStr;
+    use tokio_util::codec::{Decoder, Encoder};
     use tungstenite::client::IntoClientRequest;
     use tungstenite::http::{Request, Uri};
     use tungstenite::protocol::{Role, WebSocketContext};
-    use tungstenite::{client, Message, WebSocket};
+    use tungstenite::{client, WebSocket};
+    use websocket_codec::{Message, MessageCodec};
 
     use crate::pipeline_module::pipeline::{PipelineDirection, PipelineStep};
     use crate::BoxedClone;
@@ -56,35 +59,79 @@ pub mod ws_destination {
             } else if available == 0 {
                 Ok(0)
             } else {
-                let m = &mut self.get_websocket().read().unwrap();
-                match m {
-                    Message::Text(data) => unsafe {
-                        std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.as_bytes().len());
-                        Ok(data.as_bytes().len())
+                let mut byteData = BytesMut::new();
+                byteData.resize(available, 0);
+                self.tcp_stream.read(byteData.to_vec().as_mut_slice());
+                match MessageCodec::client().decode(&mut byteData) {
+                    Ok(msg) => match msg {
+                        Some(msg) => {
+                            unsafe {
+                                std::ptr::copy(
+                                    msg.data().as_ptr(),
+                                    buf.as_mut_ptr(),
+                                    msg.data().len(),
+                                );
+                            }
+                            return Ok(msg.data().len());
+                        }
+                        None => {
+                            let e = io::Error::new(
+                                io::ErrorKind::InvalidData,
+                                "no valid message found",
+                            );
+                            return Err(e);
+                        }
                     },
-                    Message::Binary(data) => unsafe {
-                        std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.len());
-                        Ok(data.len())
-                    },
-                    Message::Ping(_) | Message::Pong(_) | Message::Close(_) | Message::Frame(_) => {
-                        Ok(0)
+                    Err(e) => {
+                        let e = format!("{}", e);
+                        let e = io::Error::new(io::ErrorKind::Other, e);
+                        return Err(e);
                     }
                 }
+                // let m = &mut self.get_websocket().read().unwrap();
+                // match m {
+                //     Message::Text(data) => unsafe {
+                //         std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.as_bytes().len());
+                //         Ok(data.as_bytes().len())
+                //     },
+                //     Message::Binary(data) => unsafe {
+                //         std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.len());
+                //         Ok(data.len())
+                //     },
+                //     Message::Ping(_) | Message::Pong(_) | Message::Close(_) | Message::Frame(_) => {
+                //         Ok(0)
+                //     }
+                // }
             }
         }
     }
 
     impl Write for WebsocketDestination {
         fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-            let vec = Vec::from(buf);
-            let msg = Message::Binary(vec);
-            let result = self.get_websocket().send(msg);
-            match result {
-                Ok(_) => Ok(buf.len()),
-                Err(error) => {
-                    panic!("{}", error);
+            let vec_buf = Vec::from(buf);
+            let msg = Message::binary(vec_buf);
+            let mut bytebuf: BytesMut = BytesMut::new();
+            MessageCodec::client().encode(&msg, &mut bytebuf).unwrap();
+
+            match self.tcp_stream.write(bytebuf.to_vec().as_slice()) {
+                Ok(size) => {
+                    if let Err(e) = self.tcp_stream.flush() {
+                        return Err(e);
+                    }
+                    return Ok(size)
                 }
+                Err(e) => return Err(e),
             }
+
+            // let vec = Vec::from(buf);
+            // let msg = Message::Binary(vec);
+            // let result = self.get_websocket().send(msg);
+            // match result {
+            //     Ok(_) => Ok(buf.len()),
+            //     Err(error) => {
+            //         panic!("{}", error);
+            //     }
+            // }
         }
 
         fn flush(&mut self) -> std::io::Result<()> {
@@ -177,10 +224,10 @@ pub mod wss_destination {
             addr.push_str(port.to_string().as_str());
             let connection = TcpStream::connect(addr.clone()).unwrap();
 
-            #[cfg(feature = "ubuntu-22")]
+            #[cfg(feature = "has_not_builder")]
             let mut ssl_connector_builder: SslConnectorBuilder =
                 SslConnector::ConnectConfigurationbuilder(SslMethod::tls()).unwrap();
-            #[cfg(feature = "ubuntu-20")]
+            #[cfg(feature = "has_builder")]
             let mut ssl_connector_builder: SslConnectorBuilder =
                 SslConnector::builder(SslMethod::tls()).unwrap();
 

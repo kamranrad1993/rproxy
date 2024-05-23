@@ -1,0 +1,170 @@
+{
+  "name": "openssl-sys",
+  "version": "0.9.102",
+  "id": "openssl-sys 0.9.102 (registry+https://github.com/rust-lang/crates.io-index)",
+  "license": "MIT",
+  "license_file": null,
+  "description": "FFI bindings to OpenSSL",
+  "source": "registry+https://github.com/rust-lang/crates.io-index",
+  "dependencies": [
+    {
+      "name": "bssl-sys",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "req": "^0.1.0",
+      "kind": null,
+      "rename": null,
+      "optional": true,
+      "uses_default_features": true,
+      "features": [],
+      "target": null,
+      "registry": null
+    },
+    {
+      "name": "libc",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "req": "^0.2",
+      "kind": null,
+      "rename": null,
+      "optional": false,
+      "uses_default_features": true,
+      "features": [],
+      "target": null,
+      "registry": null
+    },
+    {
+      "name": "bindgen",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "req": "^0.65.0",
+      "kind": "build",
+      "rename": null,
+      "optional": true,
+      "uses_default_features": true,
+      "features": [
+        "experimental"
+      ],
+      "target": null,
+      "registry": null
+    },
+    {
+      "name": "cc",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "req": "^1.0.61",
+      "kind": "build",
+      "rename": null,
+      "optional": false,
+      "uses_default_features": true,
+      "features": [],
+      "target": null,
+      "registry": null
+    },
+    {
+      "name": "openssl-src",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "req": "^300.1.2",
+      "kind": "build",
+      "rename": null,
+      "optional": true,
+      "uses_default_features": true,
+      "features": [
+        "legacy"
+      ],
+      "target": null,
+      "registry": null
+    },
+    {
+      "name": "pkg-config",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "req": "^0.3.9",
+      "kind": "build",
+      "rename": null,
+      "optional": false,
+      "uses_default_features": true,
+      "features": [],
+      "target": null,
+      "registry": null
+    },
+    {
+      "name": "vcpkg",
+      "source": "registry+https://github.com/rust-lang/crates.io-index",
+      "req": "^0.2.8",
+      "kind": "build",
+      "rename": null,
+      "optional": false,
+      "uses_default_features": true,
+      "features": [],
+      "target": null,
+      "registry": null
+    }
+  ],
+  "targets": [
+    {
+      "kind": [
+        "lib"
+      ],
+      "crate_types": [
+        "lib"
+      ],
+      "name": "openssl-sys",
+      "src_path": "/home/kamran/.cargo/registry/src/index.crates.io-6f17d22bba15001f/openssl-sys-0.9.102/src/lib.rs",
+      "edition": "2018",
+      "doc": true,
+      "doctest": true,
+      "test": true
+    },
+    {
+      "kind": [
+        "custom-build"
+      ],
+      "crate_types": [
+        "bin"
+      ],
+      "name": "build-script-main",
+      "src_path": "/home/kamran/.cargo/registry/src/index.crates.io-6f17d22bba15001f/openssl-sys-0.9.102/build/main.rs",
+      "edition": "2018",
+      "doc": false,
+      "doctest": false,
+      "test": false
+    }
+  ],
+  "features": {
+    "bindgen": [
+      "dep:bindgen"
+    ],
+    "bssl-sys": [
+      "dep:bssl-sys"
+    ],
+    "openssl-src": [
+      "dep:openssl-src"
+    ],
+    "unstable_boringssl": [
+      "bssl-sys"
+    ],
+    "vendored": [
+      "openssl-src"
+    ]
+  },
+  "manifest_path": "/home/kamran/.cargo/registry/src/index.crates.io-6f17d22bba15001f/openssl-sys-0.9.102/Cargo.toml",
+  "metadata": {
+    "pkg-config": {
+      "openssl": "1.0.1"
+    }
+  },
+  "publish": null,
+  "authors": [
+    "Alex Crichton <alex@alexcrichton.com>",
+    "Steven Fackler <sfackler@gmail.com>"
+  ],
+  "categories": [
+    "cryptography",
+    "external-ffi-bindings"
+  ],
+  "keywords": [],
+  "readme": "README.md",
+  "repository": "https://github.com/sfackler/rust-openssl",
+  "homepage": null,
+  "documentation": null,
+  "edition": "2018",
+  "links": "openssl",
+  "default_run": null,
+  "rust_version": null
+}
