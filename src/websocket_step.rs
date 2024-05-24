@@ -1,23 +1,22 @@
 #[allow(non_snake_case, unused_variables, dead_code)]
 pub mod ws_destination {
     use bytes::BytesMut;
+    use http::response;
+    use httparse::{Response as HttpResponse, EMPTY_HEADER};
+    use std::fmt::{Display, Error};
     use std::io::{self, Read, Write};
     use std::net::TcpStream;
     use std::os::fd::AsRawFd;
-    use std::str::FromStr;
+    use std::str::{self, FromStr};
     use tokio_util::codec::{Decoder, Encoder};
-    use tungstenite::client::IntoClientRequest;
-    use tungstenite::http::{Request, Uri};
-    use tungstenite::protocol::{Role, WebSocketContext};
-    use tungstenite::{client, WebSocket};
     use websocket_codec::{Message, MessageCodec};
+    use hyper::{Request, Response, Method, Uri, body::Body};
 
     use crate::pipeline_module::pipeline::{PipelineDirection, PipelineStep};
-    use crate::BoxedClone;
+    use crate::{BoxedClone, WssDestination};
 
     pub struct WebsocketDestination {
         tcp_stream: TcpStream,
-        context: WebSocketContext,
         address: String,
     }
 
@@ -61,18 +60,35 @@ pub mod ws_destination {
             } else {
                 let mut byteData = BytesMut::new();
                 byteData.resize(available, 0);
-                self.tcp_stream.read(byteData.to_vec().as_mut_slice());
+                if let Err(e)  = self.tcp_stream.read(byteData.to_vec().as_mut_slice()){
+                    return Err(e)
+                }
+
                 match MessageCodec::client().decode(&mut byteData) {
                     Ok(msg) => match msg {
                         Some(msg) => {
-                            unsafe {
-                                std::ptr::copy(
-                                    msg.data().as_ptr(),
-                                    buf.as_mut_ptr(),
-                                    msg.data().len(),
-                                );
+                            match msg.opcode() {
+                                websocket_codec::Opcode::Text|
+                                websocket_codec::Opcode::Binary => {
+                                    unsafe {
+                                        std::ptr::copy(
+                                            msg.data().as_ptr(),
+                                            buf.as_mut_ptr(),
+                                            msg.data().len(),
+                                        );
+                                    }
+                                    return Ok(msg.data().len());
+                                },
+                                websocket_codec::Opcode::Close => {
+                                    let e = io::Error::new(io::ErrorKind::ConnectionAborted, "server disconnected");
+                                    return Err(e)
+                                },
+                                websocket_codec::Opcode::Ping |
+                                websocket_codec::Opcode::Pong => {
+                                    Ok(0)
+                                }
                             }
-                            return Ok(msg.data().len());
+                            
                         }
                         None => {
                             let e = io::Error::new(
@@ -118,7 +134,7 @@ pub mod ws_destination {
                     if let Err(e) = self.tcp_stream.flush() {
                         return Err(e);
                     }
-                    return Ok(size)
+                    return Ok(size);
                 }
                 Err(e) => return Err(e),
             }
@@ -135,8 +151,7 @@ pub mod ws_destination {
         }
 
         fn flush(&mut self) -> std::io::Result<()> {
-            self.get_websocket().flush().unwrap();
-            Ok(())
+            self.tcp_stream.flush()
         }
     }
 
@@ -162,20 +177,98 @@ pub mod ws_destination {
 
             addr.push_str(":");
             addr.push_str(port.to_string().as_str());
-            let connection = TcpStream::connect(addr).unwrap();
-            let req: tungstenite::http::Request<()> = uri.into_client_request().unwrap();
-            let l = client(req, connection.try_clone().unwrap()).unwrap();
+            let connection = TcpStream::connect(&addr).unwrap();
+            // let req: tungstenite::http::Request<()> = uri.into_client_request().unwrap();
+            // let l = client(req, connection.try_clone().unwrap()).unwrap();
+
+            WebsocketDestination::handshake(&connection, addr);
 
             //handle errors
             WebsocketDestination {
                 tcp_stream: connection,
-                context: WebSocketContext::new(Role::Client, None),
+                // context: WebSocketContext::new(Role::Client, None),
                 address: String::from_str(address).unwrap(),
             }
         }
 
-        pub fn get_websocket(&self) -> WebSocket<TcpStream> {
-            WebSocket::from_raw_socket(self.tcp_stream.try_clone().unwrap(), Role::Client, None)
+        fn serialize_request<T>(request: &Request<T>) -> Vec<u8>
+        where
+            T: Display,
+        {
+            let mut buffer = Vec::new();
+
+            // Serialize the request line
+            write!(
+                buffer,
+                "{} {} HTTP/1.1\r\n",
+                request.method(),
+                request.uri()
+            )
+            .unwrap();
+
+            // Serialize the headers
+            for (key, value) in request.headers() {
+                write!(buffer, "{}: {}\r\n", key, value.to_str().unwrap()).unwrap();
+            }
+
+            // End of headers
+            write!(buffer, "\r\n").unwrap();
+
+            // Serialize the body
+            write!(buffer, "{}", request.body()).unwrap();
+
+            buffer
+        }
+
+        fn handshake(mut stream: &TcpStream, address: String) -> std::io::Result<()> {
+
+            let mut headers = [EMPTY_HEADER; 16];
+            
+            let l = httparse::Request::new(&mut headers);
+            
+            //send request
+            let mut rand_buf = [0u8; 16];
+            openssl::rand::rand_bytes(&mut rand_buf).unwrap();
+            let sec_websocket_key = base64::encode(rand_buf);
+
+            // Parse the HTTP request
+            let request: Request<&str> = Request::builder()
+                .method(Method::GET)
+                .uri(&address)
+                .header("Host", address)
+                .header("Upgrade", "websocket")
+                .header("Connection", "Upgrade")
+                .header("Sec-WebSocket-Key", sec_websocket_key)
+                .header("Sec-WebSocket-Version", "13")
+                .body("")
+                .unwrap();
+
+            let l = WebsocketDestination::serialize_request(&request);
+            stream
+                .write_all(&WebsocketDestination::serialize_request(&request))
+                .unwrap();
+            stream.flush().unwrap();
+
+            //read response
+            let mut buffer = [0; 1024];
+            let read_size = stream.read(&mut buffer).unwrap();
+
+            let mut headers = [EMPTY_HEADER; 16];
+            let mut res = HttpResponse::new(&mut headers);
+            match res.parse(&buffer[0..read_size]) {
+                Ok(status) => {
+                    // println!("{}", res.code.unwrap());
+                    // println!("{}", res.reason.unwrap());
+                    // println!("{}", status.unwrap());
+                    // println!("{}", read_size);
+                },
+                Err(e) => {
+                    
+                }
+            }
+
+            
+            Ok(())
         }
     }
 }

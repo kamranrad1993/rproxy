@@ -255,7 +255,7 @@ pub mod websocket_entry_nonblocking {
             let mut websocket_key = String::new();
 
             for header in headers {
-                if header.starts_with("Sec-WebSocket-Key:") {
+                if header.starts_with("Sec-WebSocket-Key:") | header.starts_with("sec-websocket-key:")  {
                     websocket_key = header.split(": ").nth(1).unwrap().to_string();
                     break;
                 }

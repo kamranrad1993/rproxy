@@ -1,3 +1,5 @@
+mod http_tools;
+
 mod entry_module;
 pub use entry_module::entry_module::Entry;
 
