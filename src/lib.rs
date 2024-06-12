@@ -1,5 +1,5 @@
 mod http_tools;
-pub use http_tools::http_tools::{read_request, read_response};
+pub use http_tools::http_tools::{read_request, read_response, write_response, write_request};
 
 mod entry_module;
 pub use entry_module::entry_module::Entry;

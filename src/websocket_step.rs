@@ -12,7 +12,7 @@ pub mod ws_destination {
     use hyper::{Request, Response, Method, Uri, body::Body};
 
     use crate::pipeline_module::pipeline::{PipelineDirection, PipelineStep};
-    use crate::{http_tools, read_response, BoxedClone, WssDestination};
+    use crate::{http_tools, read_response, write_request, BoxedClone, WssDestination};
 
     pub struct WebsocketDestination {
         tcp_stream: TcpStream,
@@ -190,35 +190,7 @@ pub mod ws_destination {
             }
         }
 
-        fn serialize_request<T>(request: &Request<T>) -> Vec<u8>
-        where
-            T: Display,
-        {
-            let mut buffer = Vec::new();
-
-            // Serialize the request line
-            write!(
-                buffer,
-                "{} {} HTTP/1.1\r\n",
-                request.method(),
-                request.uri()
-            )
-            .unwrap();
-
-            // Serialize the headers
-            for (key, value) in request.headers() {
-                write!(buffer, "{}: {}\r\n", key, value.to_str().unwrap()).unwrap();
-            }
-
-            // End of headers
-            write!(buffer, "\r\n").unwrap();
-
-            // Serialize the body
-            write!(buffer, "{}", request.body()).unwrap();
-
-            buffer
-        }
-
+        
         fn handshake(mut stream: &mut TcpStream, address: String) -> std::io::Result<()> {
                         
             //send request
@@ -227,7 +199,7 @@ pub mod ws_destination {
             let sec_websocket_key = base64::encode(rand_buf);
 
             // Parse the HTTP request
-            let request: Request<&str> = Request::builder()
+            let request: Request<Vec<u8>> = Request::builder()
                 .method(Method::GET)
                 .uri(&address)
                 .header("Host", address)
@@ -235,37 +207,14 @@ pub mod ws_destination {
                 .header("Connection", "Upgrade")
                 .header("Sec-WebSocket-Key", sec_websocket_key)
                 .header("Sec-WebSocket-Version", "13")
-                .body("")
+                .body(vec![0;0])
                 .unwrap();
 
-            let l = WebsocketDestination::serialize_request(&request);
-            stream
-                .write_all(&WebsocketDestination::serialize_request(&request))
-                .unwrap();
-            stream.flush().unwrap();
+            write_request(stream.try_clone().unwrap(), &request)?;
 
-            //read response
-            let mut buffer = [0; 1024];
-            let read_size = stream.read(&mut buffer).unwrap();
-
-            let res = read_response(stream)?;
+            let res = read_response(&mut stream.try_clone().unwrap())?;
             println!("{}", res.status());
-
-            // let mut headers = [EMPTY_HEADER; 16];
-            // let mut res = HttpResponse::new(&mut headers);
-            // match res.parse(&buffer[0..read_size]) {
-            //     Ok(status) => {
-            //         // println!("{}", res.code.unwrap());
-            //         // println!("{}", res.reason.unwrap());
-            //         // println!("{}", status.unwrap());
-            //         // println!("{}", read_size);
-            //     },
-            //     Err(e) => {
-                    
-            //     }
-            // }
-
-            
+                        
             Ok(())
         }
     }

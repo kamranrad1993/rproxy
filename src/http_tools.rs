@@ -3,7 +3,7 @@ pub mod http_tools {
     use rand::seq;
     use std::{
         io::{self, Read, Result, Write},
-        iter::Iterator,
+        iter::{self, Iterator},
         os::fd::AsRawFd,
         str::{self, Utf8Error},
     };
@@ -32,6 +32,26 @@ pub mod http_tools {
         buffer.write(response.body().as_ref())?;
 
         stream.write(buffer.as_ref())
+    }
+
+    pub fn write_request<T: Write>(mut stream: T, request: &Request<Vec<u8>>) -> Result<usize> {
+        let mut buffer = Vec::new();
+        write!(
+            buffer,
+            "{} {} HTTP/1.1\r\n",
+            request.method(),
+            request.uri()
+        )
+        .unwrap();
+        for (key, value) in request.headers() {
+            write!(buffer, "{}: {}\r\n", key, value.to_str().unwrap()).unwrap();
+        }
+        write!(buffer, "\r\n").unwrap();
+        buffer.extend(request.body().into_iter());
+
+        let size = stream.write(buffer.as_slice())?;
+        stream.flush().unwrap();
+        Ok(size)
     }
 
     fn get_available_bytes<T: Read + AsRawFd>(stream: &mut T) -> Result<usize> {
@@ -111,21 +131,20 @@ pub mod http_tools {
 
         let request_line = parse_request_line(&buffer[0..sequence[1]]).unwrap();
         builder = builder
-        .method(request_line.0)
-        .uri(request_line.1)
-        .version(|| -> Version {
-            match Some(request_line.2) {
-                Some("HTTP/0.9") => Version::HTTP_09,
-                Some("HTTP/1.0") => Version::HTTP_09,
-                Some("HTTP/1.1") => Version::HTTP_09,
-                Some("HTTP/2.0") => Version::HTTP_09,
-                Some("HTTP/3.0") => Version::HTTP_09,
-                Some(_)|
-                None => {
-                    panic!("Unknown Http Version")
+            .method(request_line.0)
+            .uri(request_line.1)
+            .version(|| -> Version {
+                match Some(request_line.2) {
+                    Some("HTTP/0.9") => Version::HTTP_09,
+                    Some("HTTP/1.0") => Version::HTTP_09,
+                    Some("HTTP/1.1") => Version::HTTP_09,
+                    Some("HTTP/2.0") => Version::HTTP_09,
+                    Some("HTTP/3.0") => Version::HTTP_09,
+                    Some(_) | None => {
+                        panic!("Unknown Http Version")
+                    }
                 }
-            }
-        }());
+            }());
 
         for (chunk_index, index) in sequence[1..]
             .windows(2)
@@ -146,12 +165,11 @@ pub mod http_tools {
         }
     }
 
-    pub fn read_response<T: Read + AsRawFd>(stream: &mut T) -> std::io::Result<Response<Vec<u8>>>
-    {
+    pub fn read_response<T: Read + AsRawFd>(stream: &mut T) -> std::io::Result<Response<Vec<u8>>> {
         let size = get_available_bytes(stream)?;
         let mut buffer = vec![0u8; size];
 
-        stream.read(&mut buffer);
+        stream.read(&mut buffer)?;
 
         let mut sequence = vec![0usize; 0];
         let buffer_iter = buffer.iter();
@@ -182,17 +200,14 @@ pub mod http_tools {
         let mut builder = response::Response::builder();
 
         let response_line = parse_reponse_line(&buffer[0..sequence[1]]).unwrap();
-        builder = builder
-        .status(response_line.1)
-        .version(|| -> Version {
+        builder = builder.status(response_line.1).version(|| -> Version {
             match Some(response_line.0) {
                 Some("HTTP/0.9") => Version::HTTP_09,
                 Some("HTTP/1.0") => Version::HTTP_09,
                 Some("HTTP/1.1") => Version::HTTP_09,
                 Some("HTTP/2.0") => Version::HTTP_09,
                 Some("HTTP/3.0") => Version::HTTP_09,
-                Some(_)|
-                None => {
+                Some(_) | None => {
                     panic!("Unknown Http Version")
                 }
             }
