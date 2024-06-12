@@ -1,12 +1,19 @@
 pub mod http_tools {
-    use http::{Request, Response};
+    use http::{request, response, version, Request, Response, Version};
     use rand::seq;
     use std::{
-        fmt::Display,
-        io::{Read, Result, Write},
+        io::{self, Read, Result, Write},
+        iter::Iterator,
         os::fd::AsRawFd,
-        iter::Iterator
+        str::{self, Utf8Error},
     };
+
+    // #[test]
+    // pub fn test_version() -> Result<()> {
+    //     let v = http::HeaderValue::from_str("HTTP/1.1").unwrap();
+    //     assert_eq!(Version::HTTP_11, "HTTP/1.1");
+    //     Ok(())
+    // }
 
     pub fn write_response<T: Write, B: AsRef<[u8]>>(
         mut stream: T,
@@ -14,18 +21,14 @@ pub mod http_tools {
     ) -> Result<usize> {
         let mut buffer = Vec::new();
 
-        // Serialize the request line
         write!(buffer, "HTTP/1.1 {}\r\n", response.status(),)?;
 
-        // Serialize the headers
         for (key, value) in response.headers() {
             write!(buffer, "{}: {}\r\n", key, value.to_str().unwrap())?;
         }
 
-        // End of headers
         write!(buffer, "\r\n")?;
 
-        // Serialize the body
         buffer.write(response.body().as_ref())?;
 
         stream.write(buffer.as_ref())
@@ -43,45 +46,175 @@ pub mod http_tools {
         }
     }
 
-    fn parse_header(data: &[u8]) -> Result<(&str, &str)> {
+    fn parse_request_line(data: &[u8]) -> std::result::Result<(&str, &str, &str), Utf8Error> {
+        let mut parts = data.split(|&b| b == b' ');
 
+        let method = str::from_utf8(parts.next().unwrap_or(&[]))?;
+        let path = str::from_utf8(parts.next().unwrap_or(&[]))?;
+        let version = str::from_utf8(parts.next().unwrap_or(&[]))?;
+
+        Ok((method, path, version))
     }
 
-    pub fn read_request<T: Read + AsRawFd, B: AsRef<[u8]>>(stream: &mut T) -> Result<Request<B>> {
+    fn parse_reponse_line(data: &[u8]) -> std::result::Result<(&str, &str, &str), Utf8Error> {
+        let mut parts = data.split(|&b| b == b' ');
+
+        let version = str::from_utf8(parts.next().unwrap_or(&[]))?;
+        let code = str::from_utf8(parts.next().unwrap_or(&[]))?;
+        let code_msg = str::from_utf8(parts.next().unwrap_or(&[]))?;
+
+        Ok((version, code, code_msg))
+    }
+
+    fn parse_header(data: &[u8]) -> std::result::Result<(&str, &str), Utf8Error> {
+        let mut parts = data.split(|&b| b == b':');
+
+        let key = str::from_utf8(&parts.next().unwrap_or(&[]))?;
+        let value = str::from_utf8(&parts.next().unwrap_or(&[])[1..])?;
+
+        Ok((key, value))
+    }
+
+    pub fn read_request<T: Read + AsRawFd>(stream: &mut T) -> std::io::Result<Request<Vec<u8>>> {
         let size = get_available_bytes(stream)?;
         let mut buffer = vec![0u8; size];
 
-        if let Err(e) = stream.read(&mut buffer) {
-            return Err(e);
-        }
+        stream.read(&mut buffer);
 
-        let sequence = vec![0usize; 0];
-        let buffer_iter = buffer.iter().peekable();
-        let separator_buf = vec![0u8; 0];
-        let mut has_body = false;
-        
+        let mut sequence = vec![0usize; 0];
+        let buffer_iter = buffer.iter();
+        let mut separator_buf = vec![0u8; 0];
+        let mut has_body = (false, 0usize, 0usize);
+
+        sequence.push(0);
         for (index, &value) in buffer_iter.enumerate() {
             match value {
                 b'\n' => {
                     separator_buf.push(value);
-                    if separator_buf.len() > 2 {
-                        has_body = true;
+                    if separator_buf.len() > 3 {
+                        has_body = (true, index + 1, buffer.len());
                     }
-                },
+                }
                 b'\r' => {
                     if separator_buf.len() == 0 {
                         sequence.push(index);
                     }
                     separator_buf.push(value);
-                },
-                _ =>{
+                }
+                _ => {
                     separator_buf.clear();
                 }
             }
         }
-        sequence.push(buffer.len());
-        let headers = vec![("", ""); 0];
-        
+
+        let mut builder = request::Request::builder();
+
+        let request_line = parse_request_line(&buffer[0..sequence[1]]).unwrap();
+        builder = builder
+        .method(request_line.0)
+        .uri(request_line.1)
+        .version(|| -> Version {
+            match Some(request_line.2) {
+                Some("HTTP/0.9") => Version::HTTP_09,
+                Some("HTTP/1.0") => Version::HTTP_09,
+                Some("HTTP/1.1") => Version::HTTP_09,
+                Some("HTTP/2.0") => Version::HTTP_09,
+                Some("HTTP/3.0") => Version::HTTP_09,
+                Some(_)|
+                None => {
+                    panic!("Unknown Http Version")
+                }
+            }
+        }());
+
+        for (chunk_index, index) in sequence[1..]
+            .windows(2)
+            .map(|window| (window[0], window[1]))
+            .enumerate()
+        {
+            let header = parse_header(&buffer[index.0..index.1]).unwrap();
+            builder = builder.header(header.0, header.1);
+        }
+
+        if has_body.0 {
+            let body = buffer[has_body.1..has_body.2].to_vec();
+            let request = builder.body(body).unwrap();
+            Ok(request)
+        } else {
+            let request = builder.body(vec![0; 0]).unwrap();
+            Ok(request)
+        }
+    }
+
+    pub fn read_response<T: Read + AsRawFd>(stream: &mut T) -> std::io::Result<Response<Vec<u8>>>
+    {
+        let size = get_available_bytes(stream)?;
+        let mut buffer = vec![0u8; size];
+
+        stream.read(&mut buffer);
+
+        let mut sequence = vec![0usize; 0];
+        let buffer_iter = buffer.iter();
+        let mut separator_buf = vec![0u8; 0];
+        let mut has_body = (false, 0usize, 0usize);
+
+        sequence.push(0);
+        for (index, &value) in buffer_iter.enumerate() {
+            match value {
+                b'\n' => {
+                    separator_buf.push(value);
+                    if separator_buf.len() > 3 {
+                        has_body = (true, index + 1, buffer.len());
+                    }
+                }
+                b'\r' => {
+                    if separator_buf.len() == 0 {
+                        sequence.push(index);
+                    }
+                    separator_buf.push(value);
+                }
+                _ => {
+                    separator_buf.clear();
+                }
+            }
+        }
+
+        let mut builder = response::Response::builder();
+
+        let response_line = parse_reponse_line(&buffer[0..sequence[1]]).unwrap();
+        builder = builder
+        .status(response_line.1)
+        .version(|| -> Version {
+            match Some(response_line.0) {
+                Some("HTTP/0.9") => Version::HTTP_09,
+                Some("HTTP/1.0") => Version::HTTP_09,
+                Some("HTTP/1.1") => Version::HTTP_09,
+                Some("HTTP/2.0") => Version::HTTP_09,
+                Some("HTTP/3.0") => Version::HTTP_09,
+                Some(_)|
+                None => {
+                    panic!("Unknown Http Version")
+                }
+            }
+        }());
+
+        for (chunk_index, index) in sequence[1..]
+            .windows(2)
+            .map(|window| (window[0], window[1]))
+            .enumerate()
+        {
+            let header = parse_header(&buffer[index.0..index.1]).unwrap();
+            builder = builder.header(header.0, header.1);
+        }
+
+        if has_body.0 {
+            let body = buffer[has_body.1..has_body.2].to_vec();
+            let request = builder.body(body).unwrap();
+            Ok(request)
+        } else {
+            let request = builder.body(vec![0; 0]).unwrap();
+            Ok(request)
+        }
     }
 
     // use std::collections::HashMap;

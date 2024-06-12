@@ -1,8 +1,7 @@
 #[allow(non_snake_case, unused_variables, dead_code)]
 pub mod ws_destination {
     use bytes::BytesMut;
-    use http::response;
-    use httparse::{Response as HttpResponse, EMPTY_HEADER};
+    use http::{response, Version};
     use std::fmt::{Display, Error};
     use std::io::{self, Read, Write};
     use std::net::TcpStream;
@@ -13,7 +12,7 @@ pub mod ws_destination {
     use hyper::{Request, Response, Method, Uri, body::Body};
 
     use crate::pipeline_module::pipeline::{PipelineDirection, PipelineStep};
-    use crate::{BoxedClone, WssDestination};
+    use crate::{http_tools, read_response, BoxedClone, WssDestination};
 
     pub struct WebsocketDestination {
         tcp_stream: TcpStream,
@@ -177,11 +176,11 @@ pub mod ws_destination {
 
             addr.push_str(":");
             addr.push_str(port.to_string().as_str());
-            let connection = TcpStream::connect(&addr).unwrap();
+            let mut connection = TcpStream::connect(&addr).unwrap();
             // let req: tungstenite::http::Request<()> = uri.into_client_request().unwrap();
             // let l = client(req, connection.try_clone().unwrap()).unwrap();
 
-            WebsocketDestination::handshake(&connection, addr);
+            WebsocketDestination::handshake(&mut connection, addr);
 
             //handle errors
             WebsocketDestination {
@@ -220,12 +219,8 @@ pub mod ws_destination {
             buffer
         }
 
-        fn handshake(mut stream: &TcpStream, address: String) -> std::io::Result<()> {
-
-            let mut headers = [EMPTY_HEADER; 16];
-            
-            let l = httparse::Request::new(&mut headers);
-            
+        fn handshake(mut stream: &mut TcpStream, address: String) -> std::io::Result<()> {
+                        
             //send request
             let mut rand_buf = [0u8; 16];
             openssl::rand::rand_bytes(&mut rand_buf).unwrap();
@@ -253,19 +248,22 @@ pub mod ws_destination {
             let mut buffer = [0; 1024];
             let read_size = stream.read(&mut buffer).unwrap();
 
-            let mut headers = [EMPTY_HEADER; 16];
-            let mut res = HttpResponse::new(&mut headers);
-            match res.parse(&buffer[0..read_size]) {
-                Ok(status) => {
-                    // println!("{}", res.code.unwrap());
-                    // println!("{}", res.reason.unwrap());
-                    // println!("{}", status.unwrap());
-                    // println!("{}", read_size);
-                },
-                Err(e) => {
+            let res = read_response(stream)?;
+            println!("{}", res.status());
+
+            // let mut headers = [EMPTY_HEADER; 16];
+            // let mut res = HttpResponse::new(&mut headers);
+            // match res.parse(&buffer[0..read_size]) {
+            //     Ok(status) => {
+            //         // println!("{}", res.code.unwrap());
+            //         // println!("{}", res.reason.unwrap());
+            //         // println!("{}", status.unwrap());
+            //         // println!("{}", read_size);
+            //     },
+            //     Err(e) => {
                     
-                }
-            }
+            //     }
+            // }
 
             
             Ok(())
