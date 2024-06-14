@@ -54,7 +54,7 @@ pub mod http_tools {
         Ok(size)
     }
 
-    fn get_available_bytes<T: Read + AsRawFd>(stream: &mut T) -> Result<usize> {
+    pub fn get_available_bytes<T: Read + AsRawFd>(stream: &mut T) -> Result<usize> {
         let mut available: usize = 0;
         let result: i32 =
             unsafe { libc::ioctl(stream.as_raw_fd(), libc::FIONREAD, &mut available) };
@@ -101,12 +101,11 @@ pub mod http_tools {
 
         stream.read(&mut buffer);
 
-        let mut sequence = vec![0usize; 0];
+        let mut sequence = vec![(0usize, 0usize); 0];
         let buffer_iter = buffer.iter();
         let mut separator_buf = vec![0u8; 0];
         let mut has_body = (false, 0usize, 0usize);
 
-        sequence.push(0);
         for (index, &value) in buffer_iter.enumerate() {
             match value {
                 b'\n' => {
@@ -117,7 +116,11 @@ pub mod http_tools {
                 }
                 b'\r' => {
                     if separator_buf.len() == 0 {
-                        sequence.push(index);
+                        if sequence.len() == 0 {
+                            sequence.push((0, index));
+                        } else {
+                            sequence.push((sequence.last().unwrap().1 + 2, index));
+                        }
                     }
                     separator_buf.push(value);
                 }
@@ -129,7 +132,7 @@ pub mod http_tools {
 
         let mut builder = request::Request::builder();
 
-        let request_line = parse_request_line(&buffer[0..sequence[1]]).unwrap();
+        let request_line = parse_request_line(&buffer[sequence[0].0..sequence[0].1]).unwrap();
         builder = builder
             .method(request_line.0)
             .uri(request_line.1)
@@ -146,11 +149,7 @@ pub mod http_tools {
                 }
             }());
 
-        for (chunk_index, index) in sequence[1..]
-            .windows(2)
-            .map(|window| (window[0], window[1]))
-            .enumerate()
-        {
+        for (chunk_index, index) in sequence[1..].iter().enumerate() {
             let header = parse_header(&buffer[index.0..index.1]).unwrap();
             builder = builder.header(header.0, header.1);
         }
@@ -171,12 +170,11 @@ pub mod http_tools {
 
         stream.read(&mut buffer)?;
 
-        let mut sequence = vec![0usize; 0];
+        let mut sequence = vec![(0usize, 0usize); 0];
         let buffer_iter = buffer.iter();
         let mut separator_buf = vec![0u8; 0];
         let mut has_body = (false, 0usize, 0usize);
 
-        sequence.push(0);
         for (index, &value) in buffer_iter.enumerate() {
             match value {
                 b'\n' => {
@@ -187,7 +185,11 @@ pub mod http_tools {
                 }
                 b'\r' => {
                     if separator_buf.len() == 0 {
-                        sequence.push(index);
+                        if sequence.len() == 0 {
+                            sequence.push((0, index));
+                        } else {
+                            sequence.push((sequence.last().unwrap().1 + 2, index));
+                        }
                     }
                     separator_buf.push(value);
                 }
@@ -197,29 +199,29 @@ pub mod http_tools {
             }
         }
 
+
         let mut builder = response::Response::builder();
 
-        let response_line = parse_reponse_line(&buffer[0..sequence[1]]).unwrap();
+        let response_line = parse_reponse_line(&buffer[sequence[0].0..sequence[0].1]).unwrap();
         builder = builder.status(response_line.1).version(|| -> Version {
             match Some(response_line.0) {
                 Some("HTTP/0.9") => Version::HTTP_09,
-                Some("HTTP/1.0") => Version::HTTP_09,
-                Some("HTTP/1.1") => Version::HTTP_09,
-                Some("HTTP/2.0") => Version::HTTP_09,
-                Some("HTTP/3.0") => Version::HTTP_09,
+                Some("HTTP/1.0") => Version::HTTP_10,
+                Some("HTTP/1.1") => Version::HTTP_10,
+                Some("HTTP/2.0") => Version::HTTP_2,
+                Some("HTTP/3.0") => Version::HTTP_3,
                 Some(_) | None => {
                     panic!("Unknown Http Version")
                 }
             }
         }());
 
-        for (chunk_index, index) in sequence[1..]
-            .windows(2)
-            .map(|window| (window[0], window[1]))
-            .enumerate()
-        {
-            let header = parse_header(&buffer[index.0..index.1]).unwrap();
-            builder = builder.header(header.0, header.1);
+        builder = builder.header("Sec-WebSocket-Accept", "tQiJ4LxcB6HBu3o3dm2i5qiU9js=");
+
+        for (chunk_index, index) in sequence[1..].iter().enumerate() {
+            println!("{},{}", index.0, index.1);
+            let (header, header_val) = parse_header(&buffer[index.0..index.1]).unwrap();
+            builder = builder.header(header, header_val);
         }
 
         if has_body.0 {

@@ -1,26 +1,23 @@
 pub mod websocket_entry_nonblocking {
-    use crate::pipeline_module::pipeline::IOError;
-    use crate::{Entry, Pipeline};
+    use crate::http_tools::http_tools;
+    use crate::{get_available_bytes, write_response, read_request, Entry, Pipeline};
     use bytes::{self, BytesMut};
-    use http::{Request, Response};
+    use http::{response, Request, Response, Version};
     use openssl::sha::Sha1;
     use polling::{Event, Events, Poller};
     use regex::Regex;
-    use std::any::Any;
     use std::collections::HashMap;
     use std::io::{self, Read, Write};
     use std::net::{SocketAddr, TcpListener, TcpStream};
     use std::os::fd::AsRawFd;
     use std::str;
     use std::thread;
+    use std::time::Duration;
     use tokio_util::codec::{Decoder, Encoder};
-    use tungstenite::protocol::Role;
     use tungstenite::{
-        accept,
         error::ProtocolError,
-        handshake::{server, MidHandshake},
         http::Uri,
-        stream, Error, WebSocket,
+        Error,
     };
     use websocket_codec::{self, Message, MessageCodec};
 
@@ -245,18 +242,15 @@ pub mod websocket_entry_nonblocking {
         }
 
         fn handshake(mut stream: TcpStream) -> std::io::Result<()> {
-            let mut buffer = [0; 1024];
-            let read_size = stream.read(&mut buffer).unwrap();
+            let read_size = get_available_bytes(&mut stream)?;
+            let mut buffer = vec![0u8; read_size];
 
-            // Parse the HTTP request
-            let request = Request::builder().body(()).unwrap();
-            let request_str = str::from_utf8(&buffer[..read_size]).unwrap();
-            let headers: Vec<&str> = request_str.split("\r\n").collect();
+            let request = read_request(&mut stream)?;
             let mut websocket_key = String::new();
 
-            for header in headers {
-                if header.starts_with("Sec-WebSocket-Key:") | header.starts_with("sec-websocket-key:")  {
-                    websocket_key = header.split(": ").nth(1).unwrap().to_string();
+            for (header_name, header_value) in request.headers() {
+                if (header_name.as_str() == "Sec-WebSocket-Key") | (header_name.as_str() == "sec-websocket-key")  {
+                    websocket_key = std::str::from_utf8(header_value.as_bytes()).unwrap().to_string();
                     break;
                 }
             }
@@ -269,23 +263,22 @@ pub mod websocket_entry_nonblocking {
                 return Err(e);
             }
 
-            // Create WebSocket accept key
             let magic_string = websocket_key + "258EAFA5-E914-47DA-95CA-C5AB0DC85B11";
             let mut hasher = Sha1::new();
             hasher.update(magic_string.as_bytes());
             let result = hasher.finish();
             let accept_key = base64::encode(result);
 
-            // Send WebSocket handshake response
-            let response = format!(
-                "HTTP/1.1 101 Switching Protocols\r\n\
-                         Connection: Upgrade\r\n\
-                         Upgrade: websocket\r\n\
-                         Sec-WebSocket-Accept: {}\r\n\r\n",
-                accept_key
-            );
-            stream.write_all(response.as_bytes()).unwrap();
-            stream.flush().unwrap();
+            let response = response::Builder::new()
+                .version(Version::HTTP_11)
+                .status(101)
+                .header("Connection", "Upgrade")
+                .header("Upgrade", "websocket")
+                .header("Sec-WebSocket-Accept", accept_key)
+                .body(vec![0u8;0])
+            .unwrap();
+        
+            write_response(stream, response)?;
             Ok(())
         }
 
@@ -305,6 +298,7 @@ pub mod websocket_entry_nonblocking {
             let mut handhsaked = false;
 
             loop {
+                thread::sleep(Duration::from_millis(10));
                 self.poller.wait(&mut events, None).unwrap();
 
                 for ev in events.iter() {

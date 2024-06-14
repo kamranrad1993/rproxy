@@ -7,12 +7,13 @@ pub mod ws_destination {
     use std::net::TcpStream;
     use std::os::fd::AsRawFd;
     use std::str::{self, FromStr};
+    use std::time::Duration;
     use tokio_util::codec::{Decoder, Encoder};
     use websocket_codec::{Message, MessageCodec};
     use hyper::{Request, Response, Method, Uri, body::Body};
 
     use crate::pipeline_module::pipeline::{PipelineDirection, PipelineStep};
-    use crate::{http_tools, read_response, write_request, BoxedClone, WssDestination};
+    use crate::{get_available_bytes, http_tools, read_response, write_request, BoxedClone, WssDestination};
 
     pub struct WebsocketDestination {
         tcp_stream: TcpStream,
@@ -59,7 +60,7 @@ pub mod ws_destination {
             } else {
                 let mut byteData = BytesMut::new();
                 byteData.resize(available, 0);
-                if let Err(e)  = self.tcp_stream.read(byteData.to_vec().as_mut_slice()){
+                if let Err(e)  = self.tcp_stream.read(byteData.as_mut()){
                     return Err(e)
                 }
 
@@ -103,20 +104,6 @@ pub mod ws_destination {
                         return Err(e);
                     }
                 }
-                // let m = &mut self.get_websocket().read().unwrap();
-                // match m {
-                //     Message::Text(data) => unsafe {
-                //         std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.as_bytes().len());
-                //         Ok(data.as_bytes().len())
-                //     },
-                //     Message::Binary(data) => unsafe {
-                //         std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.len());
-                //         Ok(data.len())
-                //     },
-                //     Message::Ping(_) | Message::Pong(_) | Message::Close(_) | Message::Frame(_) => {
-                //         Ok(0)
-                //     }
-                // }
             }
         }
     }
@@ -177,15 +164,11 @@ pub mod ws_destination {
             addr.push_str(":");
             addr.push_str(port.to_string().as_str());
             let mut connection = TcpStream::connect(&addr).unwrap();
-            // let req: tungstenite::http::Request<()> = uri.into_client_request().unwrap();
-            // let l = client(req, connection.try_clone().unwrap()).unwrap();
 
             WebsocketDestination::handshake(&mut connection, addr);
 
-            //handle errors
             WebsocketDestination {
                 tcp_stream: connection,
-                // context: WebSocketContext::new(Role::Client, None),
                 address: String::from_str(address).unwrap(),
             }
         }
@@ -198,7 +181,6 @@ pub mod ws_destination {
             openssl::rand::rand_bytes(&mut rand_buf).unwrap();
             let sec_websocket_key = base64::encode(rand_buf);
 
-            // Parse the HTTP request
             let request: Request<Vec<u8>> = Request::builder()
                 .method(Method::GET)
                 .uri(&address)
@@ -211,6 +193,8 @@ pub mod ws_destination {
                 .unwrap();
 
             write_request(stream.try_clone().unwrap(), &request)?;
+
+            std::thread::sleep(Duration::from_millis(10));
 
             let res = read_response(&mut stream.try_clone().unwrap())?;
             println!("{}", res.status());
