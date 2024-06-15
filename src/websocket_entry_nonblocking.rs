@@ -6,6 +6,7 @@ pub mod websocket_entry_nonblocking {
     use openssl::sha::Sha1;
     use polling::{Event, Events, Poller};
     use regex::Regex;
+    use tungstenite::handshake;
     use std::collections::HashMap;
     use std::io::{self, Read, Write};
     use std::net::{SocketAddr, TcpListener, TcpStream};
@@ -295,7 +296,7 @@ pub mod websocket_entry_nonblocking {
             }
             let mut events = Events::new();
 
-            let mut handhsaked = false;
+            let mut handshaked = false;
 
             loop {
                 thread::sleep(Duration::from_millis(10));
@@ -304,10 +305,10 @@ pub mod websocket_entry_nonblocking {
                 for ev in events.iter() {
                     if ev.key == client_key {
                         if ev.readable {
-                            if !handhsaked {
+                            if !handshaked {
                                 WSEntryNonBlocking::handshake(client.0.try_clone().unwrap())
                                     .unwrap();
-                                handhsaked = true;
+                                handshaked = true;
                                 continue;
                             }
                             match WSEntryNonBlocking::len(&mut client.0) {
@@ -349,7 +350,7 @@ pub mod websocket_entry_nonblocking {
                             }
                         }
 
-                        if ev.writable {
+                        if ev.writable && handshaked {
                             if self.pipeline.read_available() {
                                 match self.pipeline.read() {
                                     Ok(data) => {

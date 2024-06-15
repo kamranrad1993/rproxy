@@ -118,6 +118,7 @@ pub mod tcp_entry_nonblocking {
             let mut events = Events::new();
 
             loop {
+                thread::sleep(Duration::from_millis(10));
                 self.poller.wait(&mut events, None).unwrap();
 
                 for ev in events.iter() {

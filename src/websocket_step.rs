@@ -192,11 +192,11 @@ pub mod ws_destination {
                 .body(vec![0;0])
                 .unwrap();
 
-            write_request(stream.try_clone().unwrap(), &request)?;
+            write_request(&mut stream, &request)?;
 
             std::thread::sleep(Duration::from_millis(10));
 
-            let res = read_response(&mut stream.try_clone().unwrap())?;
+            let res = read_response(stream)?;
             println!("{}", res.status());
                         
             Ok(())
