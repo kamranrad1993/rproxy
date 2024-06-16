@@ -110,6 +110,7 @@ pub mod tcp_entry_nonblocking {
 
     impl TcpEntryNonBlocking {
         fn handle_connection(&mut self, event: Event) -> io::Result<()> {
+            self.pipeline.start();
             let client = self.connections.get_mut(&event.key).unwrap();
 
             unsafe {

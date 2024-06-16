@@ -33,6 +33,7 @@ pub mod io_entry {
         }
 
         fn listen(&mut self) {
+            self.pipeline.start();
             loop {
                 let len = STDioEntry::len(&mut std::io::stdin()).unwrap();
                 if len > 0 {

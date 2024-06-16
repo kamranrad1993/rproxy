@@ -16,7 +16,7 @@ pub mod ws_destination {
     use crate::{get_available_bytes, http_tools, read_response, write_request, BoxedClone, WssDestination};
 
     pub struct WebsocketDestination {
-        tcp_stream: TcpStream,
+        tcp_stream: Option<TcpStream>,
         address: String,
     }
 
@@ -24,7 +24,7 @@ pub mod ws_destination {
         fn len(&self) -> std::io::Result<usize> {
             let mut available: usize = 0;
             let result: i32 =
-                unsafe { libc::ioctl(self.tcp_stream.as_raw_fd(), libc::FIONREAD, &mut available) };
+                unsafe { libc::ioctl(self.tcp_stream.as_ref().unwrap().as_raw_fd(), libc::FIONREAD, &mut available) };
             if result == -1 {
                 let errno = std::io::Error::last_os_error();
                 Err(errno)
@@ -37,7 +37,33 @@ pub mod ws_destination {
             // println!("{}", direction);
         }
 
-        fn start(&self) {}
+        fn start(&mut self) {
+            let uri: Uri = self.address.parse::<Uri>().unwrap();
+            let mut addr = String::from(uri.host().unwrap());
+            let mut port = 0;
+            if uri.port() != None {
+                port = uri.port().unwrap().as_u16();
+            } else {
+                port = match uri.scheme_str() {
+                    Some("ws") => 80,
+                    Some("wss") => 443,
+                    Some("http") => 80,
+                    Some("https") => 443,
+                    None | _ => {
+                        panic!("unknow uri scheme")
+                    }
+                };
+            }
+
+            addr.push_str(":");
+            addr.push_str(port.to_string().as_str());
+            let mut connection = TcpStream::connect(&addr).unwrap();
+            connection.set_nonblocking(false).unwrap();
+
+            WebsocketDestination::handshake(&mut connection, addr).unwrap();
+            
+            self.tcp_stream = Some(connection);
+        }
     }
 
     impl BoxedClone for WebsocketDestination {
@@ -50,7 +76,7 @@ pub mod ws_destination {
         fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
             let mut available: usize = 0;
             let result: i32 =
-                unsafe { libc::ioctl(self.tcp_stream.as_raw_fd(), libc::FIONREAD, &mut available) };
+                unsafe { libc::ioctl(self.get_stream().as_raw_fd(), libc::FIONREAD, &mut available) };
 
             if result == -1 {
                 let errno = std::io::Error::last_os_error();
@@ -60,7 +86,7 @@ pub mod ws_destination {
             } else {
                 let mut byteData = BytesMut::new();
                 byteData.resize(available, 0);
-                if let Err(e)  = self.tcp_stream.read(byteData.as_mut()){
+                if let Err(e)  = self.get_stream().read(byteData.as_mut()){
                     return Err(e)
                 }
 
@@ -115,60 +141,28 @@ pub mod ws_destination {
             let mut bytebuf: BytesMut = BytesMut::new();
             MessageCodec::client().encode(&msg, &mut bytebuf).unwrap();
 
-            match self.tcp_stream.write(bytebuf.to_vec().as_slice()) {
+            match self.get_stream().write(bytebuf.to_vec().as_slice()) {
                 Ok(size) => {
-                    if let Err(e) = self.tcp_stream.flush() {
+                    if let Err(e) = self.get_stream().flush() {
                         return Err(e);
                     }
                     return Ok(size);
                 }
                 Err(e) => return Err(e),
             }
-
-            // let vec = Vec::from(buf);
-            // let msg = Message::Binary(vec);
-            // let result = self.get_websocket().send(msg);
-            // match result {
-            //     Ok(_) => Ok(buf.len()),
-            //     Err(error) => {
-            //         panic!("{}", error);
-            //     }
-            // }
         }
 
         fn flush(&mut self) -> std::io::Result<()> {
-            self.tcp_stream.flush()
+            self.get_stream().flush()
         }
     }
 
     #[allow(unreachable_code)]
     impl WebsocketDestination {
         pub fn new(address: &str) -> Self {
-            let uri: Uri = address.parse::<Uri>().unwrap();
-            let mut addr = String::from(uri.host().unwrap());
-            let mut port = 0;
-            if uri.port() != None {
-                port = uri.port().unwrap().as_u16();
-            } else {
-                port = match uri.scheme_str() {
-                    Some("ws") => 80,
-                    Some("wss") => 443,
-                    Some("http") => 80,
-                    Some("https") => 443,
-                    None | _ => {
-                        panic!("unknow uri scheme")
-                    }
-                };
-            }
-
-            addr.push_str(":");
-            addr.push_str(port.to_string().as_str());
-            let mut connection = TcpStream::connect(&addr).unwrap();
-
-            WebsocketDestination::handshake(&mut connection, addr);
 
             WebsocketDestination {
-                tcp_stream: connection,
+                tcp_stream: None,
                 address: String::from_str(address).unwrap(),
             }
         }
@@ -194,12 +188,14 @@ pub mod ws_destination {
 
             write_request(&mut stream, &request)?;
 
-            std::thread::sleep(Duration::from_millis(10));
+            std::thread::sleep(Duration::from_millis(20));
 
-            let res = read_response(stream)?;
-            println!("{}", res.status());
-                        
+            let res = read_response(stream)?;                        
             Ok(())
+        }
+
+        fn get_stream(&self ) -> &TcpStream {
+            self.tcp_stream.as_ref().unwrap()
         }
     }
 }
@@ -304,7 +300,7 @@ pub mod wss_destination {
 
         fn set_pipeline_direction(&mut self, direction: crate::PipelineDirection) {}
 
-        fn start(&self) {}
+        fn start(&mut self) {}
     }
 
     impl BoxedClone for WssDestination {

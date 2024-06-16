@@ -22,7 +22,7 @@ pub mod io_step {
         #[allow(unused_variables)]
         fn set_pipeline_direction(&mut self, direction: PipelineDirection) {}
 
-        fn start(&self) {}
+        fn start(&mut self) {}
     }
 
     impl BoxedClone for STDioStep {

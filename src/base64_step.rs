@@ -34,7 +34,7 @@ pub mod base64 {
             self.pipeline_direction = direction;
         }
 
-        fn start(&self) {}
+        fn start(&mut self) {}
     }
 
     impl BoxedClone for Base64 {

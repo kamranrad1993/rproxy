@@ -32,7 +32,7 @@ pub mod random_salt_step {
             self.pipeline_direction = direction;
         }
 
-        fn start(&self) {}
+        fn start(&mut self) {}
     }
 
     impl BoxedClone for RSult {

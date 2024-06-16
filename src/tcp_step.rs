@@ -13,7 +13,7 @@ pub mod tcp_step {
     use crate::BoxedClone;
 
     pub struct TCPStep {
-        tcp_stream: TcpStream,
+        tcp_stream: Option<TcpStream>,
         address: String,
     }
 
@@ -21,7 +21,7 @@ pub mod tcp_step {
         fn len(&self) -> std::io::Result<usize> {
             let mut available: usize = 0;
             let result: i32 =
-                unsafe { libc::ioctl(self.tcp_stream.as_raw_fd(), libc::FIONREAD, &mut available) };
+                unsafe { libc::ioctl(self.get_stream().as_raw_fd(), libc::FIONREAD, &mut available) };
             if result == -1 {
                 let errno = std::io::Error::last_os_error();
                 Err(errno)
@@ -34,7 +34,19 @@ pub mod tcp_step {
             // println!("{}", direction);
         }
 
-        fn start(&self) {}
+        fn start(&mut self) {
+            let mut connection: Option<TcpStream> = None;
+
+            let uri: Uri = self.address.parse::<Uri>().unwrap();
+            let mut addr = String::from(uri.host().unwrap());
+            let port = uri.port().unwrap().as_u16();
+
+            addr.push_str(":");
+            addr.push_str(port.to_string().as_str());
+            let connection = TcpStream::connect(addr).unwrap();
+
+            self.tcp_stream = Some(connection);
+        }
     }
 
     impl BoxedClone for TCPStep {
@@ -47,7 +59,7 @@ pub mod tcp_step {
         fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
             let mut available: usize = 0;
             let result: i32 =
-                unsafe { libc::ioctl(self.tcp_stream.as_raw_fd(), libc::FIONREAD, &mut available) };
+                unsafe { libc::ioctl(self.get_stream().as_raw_fd(), libc::FIONREAD, &mut available) };
 
             if result == -1 {
                 let errno = std::io::Error::last_os_error();
@@ -55,39 +67,34 @@ pub mod tcp_step {
             } else if available == 0 {
                 Ok(0)
             } else {
-                self.tcp_stream.read(buf)
+                self.get_stream().read(buf)
             }
         }
     }
 
     impl Write for TCPStep {
         fn write(&mut self, buf: &[u8]) -> std::io::Result<usize> {
-            self.tcp_stream.write(buf)
+            self.get_stream().write(buf)
         }
 
         fn flush(&mut self) -> std::io::Result<()> {
-            self.tcp_stream.flush()
+            self.get_stream().flush()
         }
     }
 
     #[allow(unreachable_code)]
     impl TCPStep {
         pub fn new(address: &str) -> Self {
-            let mut connection: Option<TcpStream> = None;
-
-            let uri: Uri = address.parse::<Uri>().unwrap();
-            let mut addr = String::from(uri.host().unwrap());
-            let port = uri.port().unwrap().as_u16();
-
-            addr.push_str(":");
-            addr.push_str(port.to_string().as_str());
-            let connection = TcpStream::connect(addr).unwrap();
-
+            
             //handle errors
             TCPStep {
-                tcp_stream: connection,
+                tcp_stream: None,
                 address: String::from_str(address).unwrap(),
             }
+        }
+
+        fn get_stream(&self ) -> &TcpStream {
+            self.tcp_stream.as_ref().unwrap()
         }
     }
 }

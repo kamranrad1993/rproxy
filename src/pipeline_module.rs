@@ -54,7 +54,7 @@ pub mod pipeline {
     }
 
     pub trait PipelineStep: Read + Write + Send + Sync + BoxedClone {
-        fn start(&self);
+        fn start(&mut self);
         fn len(&self) -> std::io::Result<usize>;
         fn set_pipeline_direction(&mut self, direction: PipelineDirection);
     }
@@ -96,12 +96,18 @@ pub mod pipeline {
             }
         }
 
+        pub fn start(&mut self) {
+            for i in 0..self.steps.len() {
+                self.steps[i].as_mut().start();
+            }
+        }
+
         pub fn write(&mut self, mut data: Vec<u8>) -> Result<usize, IOError> {
             for i in 0..self.steps.len() {
                 self.steps[i].set_pipeline_direction(PipelineDirection::Forward);
             }
             let mut size = 0;
-            
+
             for i in 0..self.steps.len() {
                 self.steps[i].write(&data).unwrap();
                 self.steps[i].flush().unwrap();

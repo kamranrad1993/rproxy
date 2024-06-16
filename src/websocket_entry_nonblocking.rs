@@ -284,6 +284,8 @@ pub mod websocket_entry_nonblocking {
         }
 
         fn handle_connection(&mut self, client_key: usize) {
+            self.pipeline.start();
+
             let client = self.connections.get_mut(&client_key).unwrap();
             client.0.set_nonblocking(true).unwrap();
 
