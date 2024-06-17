@@ -71,20 +71,19 @@ pub mod tcp_entry_nonblocking {
                 for ev in events.iter() {
                     if ev.key == self.listener_key {
                         let (client, client_address) = self.listener.accept().unwrap();
-                        let client_key = self.connections.len() + self.listener_key;
+                        let client_key = self.connections.len() + self.listener_key + 1;
 
-                        println!("new client : {}", client_address);
                         self.connections
                             .insert(client_key, (client, client_address));
+                        let mut cloned_self = self.clone();
+
+                        thread::spawn(move || {
+                            cloned_self.handle_connection(client_key).unwrap();
+                        });
 
                         self.poller
                             .modify(&self.listener, Event::readable(self.listener_key))
                             .unwrap();
-
-                        let mut cloned_self = self.clone();
-                        thread::spawn(move || {
-                            cloned_self.handle_connection(ev).unwrap();
-                        });
                     }
                 }
             }
@@ -109,21 +108,26 @@ pub mod tcp_entry_nonblocking {
     }
 
     impl TcpEntryNonBlocking {
-        fn handle_connection(&mut self, event: Event) -> io::Result<()> {
+        fn handle_connection(&mut self, client_key: usize) -> io::Result<()> {
             self.pipeline.start();
-            let client = self.connections.get_mut(&event.key).unwrap();
+
+            let client = self.connections.get_mut(&client_key).unwrap();
+            client.0.set_nonblocking(true).unwrap();
+
+            println!("new client connected, key : {}, address : {} ", client_key, client.1);
 
             unsafe {
-                self.poller.add(&client.0, Event::all(event.key))?;
+                self.poller.add(&client.0, Event::all(client_key))?;
             }
             let mut events = Events::new();
+            let mut is_connected = true;
 
             loop {
                 thread::sleep(Duration::from_millis(10));
                 self.poller.wait(&mut events, None).unwrap();
 
                 for ev in events.iter() {
-                    if ev.key == event.key {
+                    if ev.key == client_key {
                         if ev.readable {
                             match TcpEntryNonBlocking::len(&mut client.0) {
                                 Ok(len) => {
@@ -136,12 +140,20 @@ pub mod tcp_entry_nonblocking {
                                             }
                                             Err(e) => {
                                                 println!("Error reading from stream: {}", e);
+                                                is_connected = false;
+                                                break;
                                             }
                                         }
+                                    } else {
+                                        println!("Error reading from stream: {}", "Zero Length");
+                                        is_connected = false;
+                                        break;
                                     }
                                 }
                                 Err(e) => {
                                     println!("Error reading from stream: {}", e);
+                                    is_connected = false;
+                                    break;
                                 }
                             }
                         }
@@ -150,23 +162,36 @@ pub mod tcp_entry_nonblocking {
                             if self.pipeline.read_available() {
                                 let data = self.pipeline.read().unwrap();
                                 if !data.is_empty() {
-                                    match client.0.write_all(&data) {
-                                        Ok(_) => {}
-                                        Err(e) => {
-                                            println!("Error writing to stream: {}", e);
-                                        }
+                                    if let Err(e) = client.0.write(&data) {
+                                        println!("Error writing to stream: {}", e);
+                                        is_connected = false;
+                                        break;
+                                    }
+
+                                    if let Err(e) = client.0.flush() {
+                                        println!("Error flush stream: {}", e);
+                                        is_connected = false;
+                                        break;
                                     }
                                 }
                             }
+                        } else {
+                            is_connected = false;
+                            break;
                         }
                     }
                 }
 
+                if !is_connected {
+                    break;
+                }
+
                 self.poller
-                    .modify(&client.0, Event::all(event.key))
+                    .modify(&client.0, Event::all(client_key))
                     .unwrap();
             }
 
+            println!("client disconnected, key : {}, address : {} ", client_key, client.1);
             Ok(())
         }
     }

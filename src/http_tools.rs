@@ -219,7 +219,6 @@ pub mod http_tools {
         builder = builder.header("Sec-WebSocket-Accept", "tQiJ4LxcB6HBu3o3dm2i5qiU9js=");
 
         for (chunk_index, index) in sequence[1..].iter().enumerate() {
-            println!("{},{}", index.0, index.1);
             let (header, header_val) = parse_header(&buffer[index.0..index.1]).unwrap();
             builder = builder.header(header, header_val);
         }

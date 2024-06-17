@@ -2,6 +2,8 @@
 pub mod ws_destination {
     use bytes::BytesMut;
     use http::{response, Version};
+    use hyper::{body::Body, Method, Request, Response, Uri};
+    use polling::{Event, Events, Poller};
     use std::fmt::{Display, Error};
     use std::io::{self, Read, Write};
     use std::net::TcpStream;
@@ -10,10 +12,11 @@ pub mod ws_destination {
     use std::time::Duration;
     use tokio_util::codec::{Decoder, Encoder};
     use websocket_codec::{Message, MessageCodec};
-    use hyper::{Request, Response, Method, Uri, body::Body};
 
     use crate::pipeline_module::pipeline::{PipelineDirection, PipelineStep};
-    use crate::{get_available_bytes, http_tools, read_response, write_request, BoxedClone, WssDestination};
+    use crate::{
+        get_available_bytes, http_tools, read_response, write_request, BoxedClone, WssDestination,
+    };
 
     pub struct WebsocketDestination {
         tcp_stream: Option<TcpStream>,
@@ -23,8 +26,13 @@ pub mod ws_destination {
     impl PipelineStep for WebsocketDestination {
         fn len(&self) -> std::io::Result<usize> {
             let mut available: usize = 0;
-            let result: i32 =
-                unsafe { libc::ioctl(self.tcp_stream.as_ref().unwrap().as_raw_fd(), libc::FIONREAD, &mut available) };
+            let result: i32 = unsafe {
+                libc::ioctl(
+                    self.tcp_stream.as_ref().unwrap().as_raw_fd(),
+                    libc::FIONREAD,
+                    &mut available,
+                )
+            };
             if result == -1 {
                 let errno = std::io::Error::last_os_error();
                 Err(errno)
@@ -61,7 +69,7 @@ pub mod ws_destination {
             connection.set_nonblocking(false).unwrap();
 
             WebsocketDestination::handshake(&mut connection, addr).unwrap();
-            
+
             self.tcp_stream = Some(connection);
         }
     }
@@ -75,8 +83,13 @@ pub mod ws_destination {
     impl Read for WebsocketDestination {
         fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
             let mut available: usize = 0;
-            let result: i32 =
-                unsafe { libc::ioctl(self.get_stream().as_raw_fd(), libc::FIONREAD, &mut available) };
+            let result: i32 = unsafe {
+                libc::ioctl(
+                    self.get_stream().as_raw_fd(),
+                    libc::FIONREAD,
+                    &mut available,
+                )
+            };
 
             if result == -1 {
                 let errno = std::io::Error::last_os_error();
@@ -86,36 +99,32 @@ pub mod ws_destination {
             } else {
                 let mut byteData = BytesMut::new();
                 byteData.resize(available, 0);
-                if let Err(e)  = self.get_stream().read(byteData.as_mut()){
-                    return Err(e)
+                if let Err(e) = self.get_stream().read(byteData.as_mut()) {
+                    return Err(e);
                 }
 
                 match MessageCodec::client().decode(&mut byteData) {
                     Ok(msg) => match msg {
-                        Some(msg) => {
-                            match msg.opcode() {
-                                websocket_codec::Opcode::Text|
-                                websocket_codec::Opcode::Binary => {
-                                    unsafe {
-                                        std::ptr::copy(
-                                            msg.data().as_ptr(),
-                                            buf.as_mut_ptr(),
-                                            msg.data().len(),
-                                        );
-                                    }
-                                    return Ok(msg.data().len());
-                                },
-                                websocket_codec::Opcode::Close => {
-                                    let e = io::Error::new(io::ErrorKind::ConnectionAborted, "server disconnected");
-                                    return Err(e)
-                                },
-                                websocket_codec::Opcode::Ping |
-                                websocket_codec::Opcode::Pong => {
-                                    Ok(0)
+                        Some(msg) => match msg.opcode() {
+                            websocket_codec::Opcode::Text | websocket_codec::Opcode::Binary => {
+                                unsafe {
+                                    std::ptr::copy(
+                                        msg.data().as_ptr(),
+                                        buf.as_mut_ptr(),
+                                        msg.data().len(),
+                                    );
                                 }
+                                return Ok(msg.data().len());
                             }
-                            
-                        }
+                            websocket_codec::Opcode::Close => {
+                                let e = io::Error::new(
+                                    io::ErrorKind::ConnectionAborted,
+                                    "server disconnected",
+                                );
+                                return Err(e);
+                            }
+                            websocket_codec::Opcode::Ping | websocket_codec::Opcode::Pong => Ok(0),
+                        },
                         None => {
                             let e = io::Error::new(
                                 io::ErrorKind::InvalidData,
@@ -160,16 +169,13 @@ pub mod ws_destination {
     #[allow(unreachable_code)]
     impl WebsocketDestination {
         pub fn new(address: &str) -> Self {
-
             WebsocketDestination {
                 tcp_stream: None,
                 address: String::from_str(address).unwrap(),
             }
         }
 
-        
         fn handshake(mut stream: &mut TcpStream, address: String) -> std::io::Result<()> {
-                        
             //send request
             let mut rand_buf = [0u8; 16];
             openssl::rand::rand_bytes(&mut rand_buf).unwrap();
@@ -183,18 +189,18 @@ pub mod ws_destination {
                 .header("Connection", "Upgrade")
                 .header("Sec-WebSocket-Key", sec_websocket_key)
                 .header("Sec-WebSocket-Version", "13")
-                .body(vec![0;0])
+                .body(vec![0; 0])
                 .unwrap();
 
             write_request(&mut stream, &request)?;
 
             std::thread::sleep(Duration::from_millis(20));
 
-            let res = read_response(stream)?;                        
+            let res = read_response(stream)?;
             Ok(())
         }
 
-        fn get_stream(&self ) -> &TcpStream {
+        fn get_stream(&self) -> &TcpStream {
             self.tcp_stream.as_ref().unwrap()
         }
     }

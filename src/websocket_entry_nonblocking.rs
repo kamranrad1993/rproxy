@@ -1,12 +1,11 @@
 pub mod websocket_entry_nonblocking {
     use crate::http_tools::http_tools;
-    use crate::{get_available_bytes, write_response, read_request, Entry, Pipeline};
+    use crate::{get_available_bytes, read_request, write_response, Entry, Pipeline};
     use bytes::{self, BytesMut};
     use http::{response, Request, Response, Version};
     use openssl::sha::Sha1;
     use polling::{Event, Events, Poller};
     use regex::Regex;
-    use tungstenite::handshake;
     use std::collections::HashMap;
     use std::io::{self, Read, Write};
     use std::net::{SocketAddr, TcpListener, TcpStream};
@@ -15,11 +14,8 @@ pub mod websocket_entry_nonblocking {
     use std::thread;
     use std::time::Duration;
     use tokio_util::codec::{Decoder, Encoder};
-    use tungstenite::{
-        error::ProtocolError,
-        http::Uri,
-        Error,
-    };
+    use tungstenite::handshake;
+    use tungstenite::{error::ProtocolError, http::Uri, Error};
     use websocket_codec::{self, Message, MessageCodec};
 
     pub struct WSEntryNonBlocking {
@@ -86,9 +82,8 @@ pub mod websocket_entry_nonblocking {
                 for ev in events.iter() {
                     if ev.key == self.listener_key {
                         let (client, client_address) = self.listener.accept().unwrap();
-
-                        // client.set_nonblocking(true).unwrap();
                         let client_key = self.connections.len() + self.listener_key + 1;
+
                         self.connections
                             .insert(client_key, (client, client_address));
                         let mut cloned_self = self.clone();
@@ -250,8 +245,12 @@ pub mod websocket_entry_nonblocking {
             let mut websocket_key = String::new();
 
             for (header_name, header_value) in request.headers() {
-                if (header_name.as_str() == "Sec-WebSocket-Key") | (header_name.as_str() == "sec-websocket-key")  {
-                    websocket_key = std::str::from_utf8(header_value.as_bytes()).unwrap().to_string();
+                if (header_name.as_str() == "Sec-WebSocket-Key")
+                    | (header_name.as_str() == "sec-websocket-key")
+                {
+                    websocket_key = std::str::from_utf8(header_value.as_bytes())
+                        .unwrap()
+                        .to_string();
                     break;
                 }
             }
@@ -276,9 +275,9 @@ pub mod websocket_entry_nonblocking {
                 .header("Connection", "Upgrade")
                 .header("Upgrade", "websocket")
                 .header("Sec-WebSocket-Accept", accept_key)
-                .body(vec![0u8;0])
-            .unwrap();
-        
+                .body(vec![0u8; 0])
+                .unwrap();
+
             write_response(stream, response)?;
             Ok(())
         }
@@ -289,9 +288,7 @@ pub mod websocket_entry_nonblocking {
             let client = self.connections.get_mut(&client_key).unwrap();
             client.0.set_nonblocking(true).unwrap();
 
-            println!("new client");
-            println!("key: {}", client_key);
-            println!("address: {}", client.1);
+            println!("new client connected, key : {}, address : {} ", client_key, client.1);
 
             unsafe {
                 self.poller.add(&client.0, Event::all(client_key)).unwrap();
@@ -299,6 +296,7 @@ pub mod websocket_entry_nonblocking {
             let mut events = Events::new();
 
             let mut handshaked = false;
+            let mut is_connected = true;
 
             loop {
                 thread::sleep(Duration::from_millis(10));
@@ -320,6 +318,7 @@ pub mod websocket_entry_nonblocking {
                                         buf.resize(len, 0u8);
                                         if let Err(e) = client.0.read(buf.as_mut()) {
                                             println!("Error reading from stream: {}", e);
+                                            is_connected = false;
                                             break;
                                         }
 
@@ -336,6 +335,7 @@ pub mod websocket_entry_nonblocking {
                                                         .unwrap();
                                                 }
                                                 websocket_codec::Opcode::Close => {
+                                                    is_connected = false;
                                                     break;
                                                 }
                                                 websocket_codec::Opcode::Ping
@@ -343,10 +343,15 @@ pub mod websocket_entry_nonblocking {
                                             },
                                             None => {}
                                         }
+                                    } else {
+                                        println!("Error reading from stream: {}", "Zero Length");
+                                        is_connected = false;
+                                        break;
                                     }
                                 }
                                 Err(e) => {
                                     println!("Error reading from stream: {}", e);
+                                    is_connected = false;
                                     break;
                                 }
                             }
@@ -364,24 +369,32 @@ pub mod websocket_entry_nonblocking {
                                             if let Err(e) = client.0.write(buf.to_vec().as_slice())
                                             {
                                                 println!("Error writing to stream: {}", e);
+                                                is_connected = false;
                                                 break;
                                             }
                                             if let Err(e) = client.0.flush() {
                                                 println!("Error flush stream: {}", e);
+                                                is_connected = false;
                                                 break;
                                             }
                                         }
                                     }
                                     Err(e) => {
                                         println!("Error reading from pipeline");
+                                        is_connected = false;
                                         break;
                                     }
                                 }
                             }
                         } else {
+                            is_connected = false;
                             break;
                         }
                     }
+                }
+
+                if ! is_connected {
+                    break;
                 }
 
                 self.poller
@@ -389,9 +402,8 @@ pub mod websocket_entry_nonblocking {
                     .unwrap();
             }
 
-            println!("client disconnected ");
-            println!("key: {}", client_key);
-            println!("address: {}", client.1);
+            println!("client disconnected, key : {}, address : {} ", client_key, client.1);
+
         }
     }
 }
