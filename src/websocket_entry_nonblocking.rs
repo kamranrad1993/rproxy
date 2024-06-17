@@ -351,25 +351,38 @@ pub mod websocket_entry_nonblocking {
                                         }
 
                                         let mut msgc = websocket_codec::MessageCodec::server()
-                                            .decode(&mut buf)
-                                            .unwrap();
+                                            .decode(&mut buf);
 
                                         match &mut msgc {
-                                            Some(msg) => match msg.opcode() {
-                                                websocket_codec::Opcode::Text
-                                                | websocket_codec::Opcode::Binary => {
-                                                    self.pipeline
-                                                        .write(msg.data().to_vec())
-                                                        .unwrap();
-                                                }
-                                                websocket_codec::Opcode::Close => {
+                                            Ok(msgc) => match msgc {
+                                                Some(msg) => match msg.opcode() {
+                                                    websocket_codec::Opcode::Text
+                                                    | websocket_codec::Opcode::Binary => {
+                                                        self.pipeline
+                                                            .write(msg.data().to_vec())
+                                                            .unwrap();
+                                                    }
+                                                    websocket_codec::Opcode::Close => {
+                                                        is_connected = false;
+                                                        break;
+                                                    }
+                                                    websocket_codec::Opcode::Ping
+                                                    | websocket_codec::Opcode::Pong => {}
+                                                },
+                                                None => {
+                                                    println!(
+                                                        "Error reading from stream: {}",
+                                                        "Invalid Websocket Message"
+                                                    );
                                                     is_connected = false;
                                                     break;
                                                 }
-                                                websocket_codec::Opcode::Ping
-                                                | websocket_codec::Opcode::Pong => {}
                                             },
-                                            None => {}
+                                            Err(e) => {
+                                                println!("Error reading from stream: {}", e);
+                                                is_connected = false;
+                                                break;
+                                            }
                                         }
                                     } else {
                                         println!("Error reading from stream: {}", "Zero Length");
