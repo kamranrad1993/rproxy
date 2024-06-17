@@ -1,7 +1,7 @@
 #[allow(non_snake_case, unused_variables, dead_code)]
 pub mod ws_destination {
     use bytes::BytesMut;
-    use http::{response, Version};
+    use http::{response, StatusCode, Version};
     use hyper::{body::Body, Method, Request, Response, Uri};
     use polling::{Event, Events, Poller};
     use std::fmt::{Display, Error};
@@ -183,9 +183,9 @@ pub mod ws_destination {
 
             let request: Request<Vec<u8>> = Request::builder()
                 .method(Method::GET)
-                .uri(&address)
+                .uri("/")
                 .header("Host", address)
-                .header("Connection", "keep-alive")
+                .header("Accept", "*/*")
                 .header("Keep-Alive","timeout=6553600")
                 .header("User-Agent", "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0")
                 .header("Upgrade", "websocket")
@@ -198,9 +198,19 @@ pub mod ws_destination {
 
             write_request(&mut stream, &request)?;
 
-            std::thread::sleep(Duration::from_millis(20));
+            std::thread::sleep(Duration::from_millis(50));
 
             let res = read_response(stream)?;
+
+            if res.status() != StatusCode::from_u16(200).unwrap() {
+                println!("response: {}", std::str::from_utf8(res.body()).unwrap());
+                let e = io::Error::new(
+                    io::ErrorKind::NotFound,
+                    "",
+                );
+                return Err(e);
+            }
+
             Ok(())
         }
 

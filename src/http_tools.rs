@@ -49,6 +49,8 @@ pub mod http_tools {
         write!(buffer, "\r\n").unwrap();
         buffer.extend(request.body().into_iter());
 
+        // println!("{}", std::str::from_utf8(&buffer).unwrap());
+
         let size = stream.write(buffer.as_slice())?;
         stream.flush().unwrap();
         Ok(size)
@@ -112,6 +114,7 @@ pub mod http_tools {
                     separator_buf.push(value);
                     if separator_buf.len() > 3 {
                         has_body = (true, index + 1, buffer.len());
+                        break;
                     }
                 }
                 b'\r' => {
@@ -181,6 +184,7 @@ pub mod http_tools {
                     separator_buf.push(value);
                     if separator_buf.len() > 3 {
                         has_body = (true, index + 1, buffer.len());
+                        break;
                     }
                 }
                 b'\r' => {

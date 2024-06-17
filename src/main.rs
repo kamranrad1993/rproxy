@@ -70,7 +70,7 @@ fn main() {
     }
     let pipeline = Pipeline::new(steps, Some(1024));
 
-    let loop_time = pargs.opt_value_from_str::<&str, u64>("-t").unwrap();
+    let loop_time: u64 = pargs.opt_value_from_str::<&str, u64>("-t").unwrap().unwrap_or(10);
 
     let entry = pargs.opt_value_from_str::<&str, String>("-e").unwrap();
     if entry == None {
@@ -84,15 +84,15 @@ fn main() {
     let config = Some(res.get(1).unwrap().as_str());
     match protocol {
         Some("ws") => {
-            let mut entry = WSEntryNonBlocking::new(entry, pipeline, loop_time.unwrap());
+            let mut entry = WSEntryNonBlocking::new(entry, pipeline, loop_time);
             entry.listen();
         }
         Some("stdio") => {
-            let mut entry = STDioEntry::new(String::new(), pipeline, loop_time.unwrap());
+            let mut entry = STDioEntry::new(String::new(), pipeline, loop_time);
             entry.listen();
         }
         Some("tcp") => {
-            let mut entry = TcpEntryNonBlocking::new(entry, pipeline, loop_time.unwrap());
+            let mut entry = TcpEntryNonBlocking::new(entry, pipeline, loop_time);
             entry.listen();
         }
         None | _ => {

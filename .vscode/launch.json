@@ -33,7 +33,7 @@
             // "args" : "-t 50 -e ws://127.0.0.1:6666 -s stdio: ",
             // "args": "-t 50 -e stdio: -s ws://127.0.0.1:6666",
             // "args": "-t 50 -e stdio: -s stdio:",
-            "args": "-t 50 -e stdio: -s salt:fw-10 -s ws://x2.bikehike.ir:80",
+            "args": "-e stdio: -s ws://x2.bikehike.ir:80",
 
             "env": {
                 "RUST_BACKTRACE": "1",

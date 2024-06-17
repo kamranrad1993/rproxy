@@ -261,7 +261,9 @@ pub mod websocket_entry_nonblocking {
                     "WebSocket key not found in headers",
                 );
 
-                let msg = "only websocket connection accpted on this server.".as_bytes().to_vec();
+                let msg = "only websocket connection accpted on this server."
+                    .as_bytes()
+                    .to_vec();
                 let response = response::Builder::new()
                     .version(Version::HTTP_11)
                     .status(200)
@@ -271,6 +273,7 @@ pub mod websocket_entry_nonblocking {
                     .unwrap();
 
                 write_response(stream, response)?;
+                std::thread::sleep(Duration::from_millis(50));
 
                 return Err(e);
             }
@@ -288,7 +291,7 @@ pub mod websocket_entry_nonblocking {
                 .header("Upgrade", "websocket")
                 .header("Sec-WebSocket-Accept", accept_key)
                 .header("Connection", "keep-alive")
-                .header("Keep-Alive","timeout=6553600")
+                .header("Keep-Alive", "timeout=6553600")
                 .header("Upgrade-Insecure-Requests", "1")
                 .header("custom-header", "1")
                 .body(vec![0u8; 0])
@@ -325,14 +328,15 @@ pub mod websocket_entry_nonblocking {
                     if ev.key == client_key {
                         if ev.readable {
                             if !handshaked {
-                                if let Err(e) = WSEntryNonBlocking::handshake(client.0.try_clone().unwrap()) {
+                                if let Err(e) =
+                                    WSEntryNonBlocking::handshake(client.0.try_clone().unwrap())
+                                {
                                     is_connected = false;
                                     break;
-                                }else {
+                                } else {
                                     handshaked = true;
                                     continue;
                                 }
-                                    
                             }
                             match WSEntryNonBlocking::len(&mut client.0) {
                                 Ok(len) => {
