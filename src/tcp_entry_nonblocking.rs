@@ -5,7 +5,7 @@ pub mod tcp_entry_nonblocking {
     use regex::Regex;
     use std::collections::HashMap;
     use std::io::{self, Read, Write};
-    use std::net::{SocketAddr, TcpListener, TcpStream};
+    use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream};
     use std::os::fd::AsRawFd;
     use std::thread;
     use std::time::Duration;
@@ -190,7 +190,7 @@ pub mod tcp_entry_nonblocking {
                     .modify(&client.0, Event::all(client_key))
                     .unwrap();
             }
-
+            client.0.shutdown(Shutdown::Both).unwrap();
             println!("client disconnected, key : {}, address : {} ", client_key, client.1);
             Ok(())
         }

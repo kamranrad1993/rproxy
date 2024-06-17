@@ -8,7 +8,7 @@ pub mod websocket_entry_nonblocking {
     use regex::Regex;
     use std::collections::HashMap;
     use std::io::{self, Read, Write};
-    use std::net::{SocketAddr, TcpListener, TcpStream};
+    use std::net::{Shutdown, SocketAddr, TcpListener, TcpStream};
     use std::os::fd::AsRawFd;
     use std::str;
     use std::thread;
@@ -260,6 +260,17 @@ pub mod websocket_entry_nonblocking {
                     io::ErrorKind::NotFound,
                     "WebSocket key not found in headers",
                 );
+
+                let msg = "only websocket connection accpted on this server.".as_bytes().to_vec();
+                let response = response::Builder::new()
+                    .version(Version::HTTP_11)
+                    .status(200)
+                    .header("Connection", "Accepted")
+                    .body(msg)
+                    .unwrap();
+
+                write_response(stream, response)?;
+
                 return Err(e);
             }
 
@@ -288,7 +299,10 @@ pub mod websocket_entry_nonblocking {
             let client = self.connections.get_mut(&client_key).unwrap();
             client.0.set_nonblocking(true).unwrap();
 
-            println!("new client connected, key : {}, address : {} ", client_key, client.1);
+            println!(
+                "new client connected, key : {}, address : {} ",
+                client_key, client.1
+            );
 
             unsafe {
                 self.poller.add(&client.0, Event::all(client_key)).unwrap();
@@ -306,10 +320,14 @@ pub mod websocket_entry_nonblocking {
                     if ev.key == client_key {
                         if ev.readable {
                             if !handshaked {
-                                WSEntryNonBlocking::handshake(client.0.try_clone().unwrap())
-                                    .unwrap();
-                                handshaked = true;
-                                continue;
+                                if let Err(e) = WSEntryNonBlocking::handshake(client.0.try_clone().unwrap()) {
+                                    is_connected = false;
+                                    break;
+                                }else {
+                                    handshaked = true;
+                                    continue;
+                                }
+                                    
                             }
                             match WSEntryNonBlocking::len(&mut client.0) {
                                 Ok(len) => {
@@ -393,7 +411,7 @@ pub mod websocket_entry_nonblocking {
                     }
                 }
 
-                if ! is_connected {
+                if !is_connected {
                     break;
                 }
 
@@ -402,8 +420,11 @@ pub mod websocket_entry_nonblocking {
                     .unwrap();
             }
 
-            println!("client disconnected, key : {}, address : {} ", client_key, client.1);
-
+            client.0.shutdown(Shutdown::Both).unwrap();
+            println!(
+                "client disconnected, key : {}, address : {} ",
+                client_key, client.1
+            );
         }
     }
 }
