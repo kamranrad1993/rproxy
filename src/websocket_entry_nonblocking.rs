@@ -273,7 +273,7 @@ pub mod websocket_entry_nonblocking {
                     .unwrap();
 
                 write_response(stream, response)?;
-                std::thread::sleep(Duration::from_millis(50));
+                // std::thread::sleep(Duration::from_millis(50));
 
                 return Err(e);
             }
@@ -288,6 +288,7 @@ pub mod websocket_entry_nonblocking {
                 .version(Version::HTTP_11)
                 .status(101)
                 .header("Connection", "Upgrade")
+                .header("Accept", "text/html; charset=utf-8")
                 .header("Upgrade", "websocket")
                 .header("Sec-WebSocket-Accept", accept_key)
                 .header("Connection", "keep-alive")
@@ -414,8 +415,8 @@ pub mod websocket_entry_nonblocking {
                                 }
                             }
                         } else {
-                            is_connected = false;
-                            break;
+                            // is_connected = false;
+                            // break;
                         }
                     }
                 }

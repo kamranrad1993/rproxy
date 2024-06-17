@@ -185,7 +185,7 @@ pub mod ws_destination {
                 .method(Method::GET)
                 .uri("/")
                 .header("Host", address)
-                .header("Accept", "*/*")
+                .header("Accept", "text/html; charset=utf-8")
                 .header("Keep-Alive","timeout=6553600")
                 .header("User-Agent", "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0")
                 .header("Upgrade", "websocket")

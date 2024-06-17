@@ -176,8 +176,8 @@ pub mod tcp_entry_nonblocking {
                                 }
                             }
                         } else {
-                            is_connected = false;
-                            break;
+                            // is_connected = false;
+                            // break;
                         }
                     }
                 }
