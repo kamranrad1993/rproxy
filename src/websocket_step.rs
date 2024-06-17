@@ -198,12 +198,12 @@ pub mod ws_destination {
 
             write_request(&mut stream, &request)?;
 
-            std::thread::sleep(Duration::from_millis(50));
+            // std::thread::sleep(Duration::from_millis(50));
 
             let res = read_response(stream)?;
 
-            if res.status() != StatusCode::from_u16(200).unwrap() {
-                println!("response: {}", std::str::from_utf8(res.body()).unwrap());
+            if res.status() != StatusCode::from_u16(101).unwrap() {
+                println!("response: {}", std::str::from_utf8(res.body()).unwrap_or(""));
                 let e = io::Error::new(
                     io::ErrorKind::NotFound,
                     "",

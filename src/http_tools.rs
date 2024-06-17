@@ -1,6 +1,7 @@
 pub mod http_tools {
     use http::{request, response, version, Request, Response, Version};
     use rand::seq;
+    use tungstenite::buffer;
     use std::{
         io::{self, Read, Result, Write},
         iter::{self, Iterator},
@@ -98,10 +99,10 @@ pub mod http_tools {
     }
 
     pub fn read_request<T: Read + AsRawFd>(stream: &mut T) -> std::io::Result<Request<Vec<u8>>> {
-        let size = get_available_bytes(stream)?;
-        let mut buffer = vec![0u8; size];
+        // let size = get_available_bytes(stream)?;
+        let mut buffer = vec![0u8; 2048];
 
-        stream.read(&mut buffer);
+        let size = stream.read(&mut buffer)?;
 
         let mut sequence = vec![(0usize, 0usize); 0];
         let buffer_iter = buffer.iter();
@@ -113,7 +114,7 @@ pub mod http_tools {
                 b'\n' => {
                     separator_buf.push(value);
                     if separator_buf.len() > 3 {
-                        has_body = (true, index + 1, buffer.len());
+                        has_body = (true, index + 1, size);
                         break;
                     }
                 }
@@ -168,10 +169,10 @@ pub mod http_tools {
     }
 
     pub fn read_response<T: Read + AsRawFd>(stream: &mut T) -> std::io::Result<Response<Vec<u8>>> {
-        let size = get_available_bytes(stream)?;
-        let mut buffer = vec![0u8; size];
+        // let size = get_available_bytes(stream)?;
+        let mut buffer = vec![0u8; 2048];
 
-        stream.read(&mut buffer)?;
+        let size = stream.read(&mut buffer)?;
 
         let mut sequence = vec![(0usize, 0usize); 0];
         let buffer_iter = buffer.iter();
@@ -183,7 +184,7 @@ pub mod http_tools {
                 b'\n' => {
                     separator_buf.push(value);
                     if separator_buf.len() > 3 {
-                        has_body = (true, index + 1, buffer.len());
+                        has_body = (true, index + 1, size);
                         break;
                     }
                 }
