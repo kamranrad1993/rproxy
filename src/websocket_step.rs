@@ -185,10 +185,14 @@ pub mod ws_destination {
                 .method(Method::GET)
                 .uri(&address)
                 .header("Host", address)
+                .header("Connection", "keep-alive")
+                .header("Keep-Alive","timeout=6553600")
+                .header("User-Agent", "Mozilla/5.0 (X11; Ubuntu; Linux x86_64; rv:125.0) Gecko/20100101 Firefox/125.0")
                 .header("Upgrade", "websocket")
                 .header("Connection", "Upgrade")
                 .header("Sec-WebSocket-Key", sec_websocket_key)
                 .header("Sec-WebSocket-Version", "13")
+                .header("Upgrade-Insecure-Requests", "1")
                 .body(vec![0; 0])
                 .unwrap();
 

@@ -266,6 +266,7 @@ pub mod websocket_entry_nonblocking {
                     .version(Version::HTTP_11)
                     .status(200)
                     .header("Connection", "Accepted")
+                    .header("custom-header", "1")
                     .body(msg)
                     .unwrap();
 
@@ -286,6 +287,10 @@ pub mod websocket_entry_nonblocking {
                 .header("Connection", "Upgrade")
                 .header("Upgrade", "websocket")
                 .header("Sec-WebSocket-Accept", accept_key)
+                .header("Connection", "keep-alive")
+                .header("Keep-Alive","timeout=6553600")
+                .header("Upgrade-Insecure-Requests", "1")
+                .header("custom-header", "1")
                 .body(vec![0u8; 0])
                 .unwrap();
 
