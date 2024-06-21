@@ -38,3 +38,5 @@ pub use tcp_entry_nonblocking::tcp_entry_nonblocking::TcpEntryNonBlocking;
 
 mod websocket_entry_nonblocking;
 pub use websocket_entry_nonblocking::websocket_entry_nonblocking::WSEntryNonBlocking;
+
+mod http_entry_nonblocking;

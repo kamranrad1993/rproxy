@@ -193,6 +193,33 @@ pub mod websocket_entry_nonblocking {
                 tungstenite::error::ProtocolError::InvalidCloseSequence => {
                     println!("InvalidCloseSequence")
                 }
+                ProtocolError::WrongHttpMethod => todo!(),
+                ProtocolError::WrongHttpVersion => todo!(),
+                ProtocolError::MissingConnectionUpgradeHeader => todo!(),
+                ProtocolError::MissingUpgradeWebSocketHeader => todo!(),
+                ProtocolError::MissingSecWebSocketVersionHeader => todo!(),
+                ProtocolError::MissingSecWebSocketKey => todo!(),
+                ProtocolError::SecWebSocketAcceptKeyMismatch => todo!(),
+                ProtocolError::SecWebSocketSubProtocolError(_) => todo!(),
+                ProtocolError::JunkAfterRequest => todo!(),
+                ProtocolError::CustomResponseSuccessful => todo!(),
+                ProtocolError::InvalidHeader(_) => todo!(),
+                ProtocolError::HandshakeIncomplete => todo!(),
+                ProtocolError::HttparseError(_) => todo!(),
+                ProtocolError::SendAfterClosing => todo!(),
+                ProtocolError::ReceivedAfterClosing => todo!(),
+                ProtocolError::NonZeroReservedBits => todo!(),
+                ProtocolError::UnmaskedFrameFromClient => todo!(),
+                ProtocolError::MaskedFrameFromServer => todo!(),
+                ProtocolError::FragmentedControlFrame => todo!(),
+                ProtocolError::ControlFrameTooBig => todo!(),
+                ProtocolError::UnknownControlFrameType(_) => todo!(),
+                ProtocolError::UnknownDataFrameType(_) => todo!(),
+                ProtocolError::UnexpectedContinueFrame => todo!(),
+                ProtocolError::ExpectedFragment(_) => todo!(),
+                ProtocolError::ResetWithoutClosingHandshake => todo!(),
+                ProtocolError::InvalidOpcode(_) => todo!(),
+                ProtocolError::InvalidCloseSequence => todo!(),
             }
         }
 

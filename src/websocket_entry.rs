@@ -93,7 +93,7 @@ pub mod websocket_entry {
                                         println!("midhandshake");
                                     }
                                     tungstenite::HandshakeError::Failure(e) => {
-                                        self.handle_handshake_error(e, conn);
+                                        // self.handle_handshake_error(e, conn);
                                     }
                                 }
                             }
@@ -108,122 +108,7 @@ pub mod websocket_entry {
     }
 
     impl WebsocketEntry {
-        fn handle_protocol_error(&self, error: ProtocolError, mut stream: TcpStream) {
-            match error {
-                tungstenite::error::ProtocolError::WrongHttpMethod => println!("WrongHttpMethod"),
-                tungstenite::error::ProtocolError::WrongHttpVersion => println!("WrongHttpVersion"),
-                tungstenite::error::ProtocolError::MissingConnectionUpgradeHeader => {
-                    println!("MissingConnectionUpgradeHeader");
-                    // let response = tungstenite::http::Response::new("Only WebSocket connections are welcome here");
-                    let response = Response::builder()
-                        .status(400)
-                        //  .header("X-Custom-Foo", "Bar")
-                        .body("Only WebSocket connections are welcome here")
-                        .unwrap();
-                    tungstenite::handshake::server::write_response(stream, &response).unwrap();
-                }
-                tungstenite::error::ProtocolError::MissingUpgradeWebSocketHeader => {
-                    println!("MissingUpgradeWebSocketHeader")
-                }
-                tungstenite::error::ProtocolError::MissingSecWebSocketVersionHeader => {
-                    println!("MissingSecWebSocketVersionHeader")
-                }
-                tungstenite::error::ProtocolError::MissingSecWebSocketKey => {
-                    println!("MissingSecWebSocketKey")
-                }
-                tungstenite::error::ProtocolError::SecWebSocketAcceptKeyMismatch => {
-                    println!("SecWebSocketAcceptKeyMismatch")
-                }
-                tungstenite::error::ProtocolError::JunkAfterRequest => println!("JunkAfterRequest"),
-                tungstenite::error::ProtocolError::CustomResponseSuccessful => {
-                    println!("CustomResponseSuccessful")
-                }
-                tungstenite::error::ProtocolError::InvalidHeader(_) => println!("InvalidHeader"),
-                tungstenite::error::ProtocolError::HandshakeIncomplete => {
-                    println!("HandshakeIncomplete")
-                }
-                tungstenite::error::ProtocolError::HttparseError(_) => println!("HttparseError"),
-                tungstenite::error::ProtocolError::SendAfterClosing => println!("SendAfterClosing"),
-                tungstenite::error::ProtocolError::ReceivedAfterClosing => {
-                    println!("ReceivedAfterClosing")
-                }
-                tungstenite::error::ProtocolError::NonZeroReservedBits => {
-                    println!("NonZeroReservedBits")
-                }
-                tungstenite::error::ProtocolError::UnmaskedFrameFromClient => {
-                    println!("UnmaskedFrameFromClient")
-                }
-                tungstenite::error::ProtocolError::MaskedFrameFromServer => {
-                    println!("MaskedFrameFromServer")
-                }
-                tungstenite::error::ProtocolError::FragmentedControlFrame => {
-                    println!("FragmentedControlFrame")
-                }
-                tungstenite::error::ProtocolError::ControlFrameTooBig => {
-                    println!("ControlFrameTooBig")
-                }
-                tungstenite::error::ProtocolError::UnknownControlFrameType(_) => {
-                    println!("UnknownControlFrameType")
-                }
-                tungstenite::error::ProtocolError::UnknownDataFrameType(_) => {
-                    println!("UnknownDataFrameType")
-                }
-                tungstenite::error::ProtocolError::UnexpectedContinueFrame => {
-                    println!("UnexpectedContinueFrame")
-                }
-                tungstenite::error::ProtocolError::ExpectedFragment(_) => {
-                    println!("ExpectedFragment")
-                }
-                tungstenite::error::ProtocolError::ResetWithoutClosingHandshake => {
-                    println!("ResetWithoutClosingHandshake")
-                }
-                tungstenite::error::ProtocolError::InvalidOpcode(_) => println!("InvalidOpcode"),
-                tungstenite::error::ProtocolError::InvalidCloseSequence => {
-                    println!("InvalidCloseSequence")
-                }
-            }
-        }
-
-        fn handle_handshake_error(&self, error: Error, mut stream: TcpStream) {
-            match error {
-                tungstenite::Error::ConnectionClosed => {
-                    println!("ConnectionClosed");
-                }
-                tungstenite::Error::AlreadyClosed => {
-                    println!("AlreadyClosed");
-                }
-                tungstenite::Error::Io(_) => {
-                    println!("Io");
-                }
-                tungstenite::Error::Tls(_) => {
-                    println!("Tls");
-                }
-                tungstenite::Error::Capacity(_) => {
-                    println!("Capacity");
-                }
-                tungstenite::Error::Protocol(protocol) => {
-                    self.handle_protocol_error(protocol, stream);
-                }
-                tungstenite::Error::WriteBufferFull(_) => {
-                    println!("WriteBufferFull");
-                }
-                tungstenite::Error::Utf8 => {
-                    println!("Utf8");
-                }
-                tungstenite::Error::AttackAttempt => {
-                    println!("AttackAttempt");
-                }
-                tungstenite::Error::Url(_) => {
-                    println!("Url");
-                }
-                tungstenite::Error::Http(_) => {
-                    println!("Http");
-                }
-                tungstenite::Error::HttpFormat(_) => {
-                    println!("HttpFormat");
-                }
-            }
-        }
+        
 
         fn handle_pipeline_(&mut self, mut websocket: WebSocket<TcpStream>) {
             loop {
