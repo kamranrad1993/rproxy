@@ -99,8 +99,8 @@ pub mod http_tools {
     }
 
     pub fn read_request<T: Read + AsRawFd>(stream: &mut T) -> std::io::Result<Request<Vec<u8>>> {
-        // let size = get_available_bytes(stream)?;
-        let mut buffer = vec![0u8; 2048];
+        let size = get_available_bytes(stream)?;
+        let mut buffer = vec![0u8; size];
 
         let size = stream.read(&mut buffer)?;
 
@@ -169,8 +169,8 @@ pub mod http_tools {
     }
 
     pub fn read_response<T: Read + AsRawFd>(stream: &mut T) -> std::io::Result<Response<Vec<u8>>> {
-        // let size = get_available_bytes(stream)?;
-        let mut buffer = vec![0u8; 2048];
+        let size = get_available_bytes(stream)?;
+        let mut buffer = vec![0u8; size];
 
         let size = stream.read(&mut buffer)?;
 

@@ -43,3 +43,4 @@ mod http_entry_nonblocking;
 pub use http_entry_nonblocking::http_entry_nonblocking::HttpEntryNonblocking;
 
 mod http_step;
+pub use http_step::http_step::HttpStep;

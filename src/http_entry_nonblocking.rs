@@ -166,7 +166,7 @@ pub mod http_entry_nonblocking {
         fn write_existing_pipeline_error(connection: TcpStream) -> io::Result<()> {
             let msg = "Piepline Already Exists";
             let response = Response::builder()
-                .status(403)
+                .status(400)
                 .body(msg.as_bytes().to_vec())
                 .unwrap();
 

@@ -1,0 +1,55 @@
+Date : 2024-06-27 23:23:12
+Directory : /home/kamran/Projects/rproxy
+Total : 23 files,  3891 codes, 162 comments, 550 blanks, all 4603 lines
+
+Languages
++----------+------------+------------+------------+------------+------------+
+| language | files      | code       | comment    | blank      | total      |
++----------+------------+------------+------------+------------+------------+
+| Rust     |         19 |      2,636 |        144 |        378 |      3,158 |
+| TOML     |          2 |      1,214 |          3 |        159 |      1,376 |
+| YAML     |          1 |         30 |         14 |          7 |         51 |
+| Python   |          1 |         11 |          1 |          6 |         18 |
++----------+------------+------------+------------+------------+------------+
+
+Directories
++-----------------------------------------------------------------+------------+------------+------------+------------+------------+
+| path                                                            | files      | code       | comment    | blank      | total      |
++-----------------------------------------------------------------+------------+------------+------------+------------+------------+
+| .                                                               |         23 |      3,891 |        162 |        550 |      4,603 |
+| . (Files)                                                       |          3 |      1,345 |         13 |        172 |      1,530 |
+| .github                                                         |          1 |         30 |         14 |          7 |         51 |
+| .github/workflows                                               |          1 |         30 |         14 |          7 |         51 |
+| src                                                             |         18 |      2,505 |        134 |        365 |      3,004 |
+| tools                                                           |          1 |         11 |          1 |          6 |         18 |
++-----------------------------------------------------------------+------------+------------+------------+------------+------------+
+
+Files
++-----------------------------------------------------------------+----------+------------+------------+------------+------------+
+| filename                                                        | language | code       | comment    | blank      | total      |
++-----------------------------------------------------------------+----------+------------+------------+------------+------------+
+| /home/kamran/Projects/rproxy/.github/workflows/rust.yml         | YAML     |         30 |         14 |          7 |         51 |
+| /home/kamran/Projects/rproxy/Cargo.lock                         | TOML     |      1,185 |          2 |        154 |      1,341 |
+| /home/kamran/Projects/rproxy/Cargo.toml                         | TOML     |         29 |          1 |          5 |         35 |
+| /home/kamran/Projects/rproxy/build.rs                           | Rust     |        131 |         10 |         13 |        154 |
+| /home/kamran/Projects/rproxy/src/base64_step.rs                 | Rust     |        115 |          1 |         11 |        127 |
+| /home/kamran/Projects/rproxy/src/entry_module.rs                | Rust     |         12 |          3 |          3 |         18 |
+| /home/kamran/Projects/rproxy/src/http_entry_nonblocking.rs      | Rust     |        225 |          2 |         35 |        262 |
+| /home/kamran/Projects/rproxy/src/http_step.rs                   | Rust     |         81 |          2 |         17 |        100 |
+| /home/kamran/Projects/rproxy/src/http_tools.rs                  | Rust     |        193 |          9 |         40 |        242 |
+| /home/kamran/Projects/rproxy/src/lib.rs                         | Rust     |         31 |          0 |         15 |         46 |
+| /home/kamran/Projects/rproxy/src/main.rs                        | Rust     |         94 |          4 |         13 |        111 |
+| /home/kamran/Projects/rproxy/src/pipeline_module.rs             | Rust     |        127 |          2 |         23 |        152 |
+| /home/kamran/Projects/rproxy/src/random_salt_step.rs            | Rust     |        136 |          5 |         13 |        154 |
+| /home/kamran/Projects/rproxy/src/stdio_entry.rs                 | Rust     |         84 |          0 |         11 |         95 |
+| /home/kamran/Projects/rproxy/src/stdio_step.rs                  | Rust     |         63 |          0 |         12 |         75 |
+| /home/kamran/Projects/rproxy/src/stream_step.rs                 | Rust     |          0 |         63 |         10 |         73 |
+| /home/kamran/Projects/rproxy/src/tcp_entry.rs                   | Rust     |        129 |         13 |         20 |        162 |
+| /home/kamran/Projects/rproxy/src/tcp_entry_nonblocking.rs       | Rust     |        173 |          2 |         24 |        199 |
+| /home/kamran/Projects/rproxy/src/tcp_step.rs                    | Rust     |         82 |          2 |         16 |        100 |
+| /home/kamran/Projects/rproxy/src/websocket_entry.rs             | Rust     |        198 |          2 |         18 |        218 |
+| /home/kamran/Projects/rproxy/src/websocket_entry_nonblocking.rs | Rust     |        436 |          5 |         40 |        481 |
+| /home/kamran/Projects/rproxy/src/websocket_step.rs              | Rust     |        326 |         19 |         44 |        389 |
+| /home/kamran/Projects/rproxy/tools/echo.py                      | Python   |         11 |          1 |          6 |         18 |
+| Total                                                           |          |      3,891 |        162 |        550 |      4,603 |
++-----------------------------------------------------------------+----------+------------+------------+------------+------------+
