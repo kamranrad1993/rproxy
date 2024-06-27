@@ -1,47 +1,49 @@
 pub mod http_entry_nonblocking {
     use std::{
-        collections::HashMap,
-        io::{self, Read, Write},
-        net::{Shutdown, SocketAddr, TcpListener, TcpStream},
-        os::fd::AsRawFd,
-        result,
-        sync::{
+        collections::HashMap, io::{self, Read, Write}, net::{IpAddr, Shutdown, SocketAddr, TcpListener, TcpStream}, os::fd::AsRawFd, result, str::FromStr, sync::{
             mpsc::{Receiver, Sender},
             Arc, Mutex,
-        },
-        thread,
-        time::Duration,
+        }, thread, time::Duration
     };
 
-    use http::{request, Uri};
+    use http::{request, Response, Uri};
+    use hyper::client;
+    use openssl::{base64, sha::sha256, string};
     use polling::{Event, Events, Poller};
     use regex::Regex;
     use std::sync::mpsc::channel;
     use threadpool::ThreadPool;
 
-    use crate::{pipeline_module::pipeline, read_request, Entry, Pipeline};
+    use crate::{pipeline_module::pipeline, read_request, write_response, Entry, Pipeline};
 
-    type ConnectionKey = usize;
+    type PollerKey = usize;
+    type Token = String;
+
+    const CLIENT_TOKEN_HEADER: &str = "client_token";
 
     pub struct HttpEntryNonblocking {
+        salt: String,
         poller: Poller,
         listener: TcpListener,
-        listener_key: ConnectionKey,
+        listener_key: PollerKey,
         pipeline: Pipeline,
         loop_time: u64,
     }
 
     impl Entry for HttpEntryNonblocking {
         fn new(config: String, pipeline: Pipeline, loop_time: u64) -> Self {
+            let config: Vec<&str> = config.split("|").collect();
+
+
             let re = Regex::new(r"((https|http)?:\/\/)([^:/$]{1,})(?::(\d{1,}))").unwrap();
-            if !re.is_match(&config) {
+            if !re.is_match(&config[0]) {
                 panic!(
                     "unsupported config : {}. use with this format ws://host:port ",
                     config
                 )
             }
 
-            let uri: Uri = config.parse::<Uri>().unwrap();
+            let uri: Uri = config[0].parse::<Uri>().unwrap();
             let mut addr = String::from(uri.host().unwrap());
             addr.push_str(":");
             addr.push_str(uri.port().unwrap().as_str());
@@ -53,6 +55,7 @@ pub mod http_entry_nonblocking {
             }
 
             HttpEntryNonblocking {
+                salt: String::from_str(config[1]).unwrap(),
                 poller,
                 listener,
                 listener_key: 1,
@@ -75,11 +78,11 @@ pub mod http_entry_nonblocking {
 
         fn listen(&mut self) {
             let mut events = Events::new();
-            let (client_channel_tx, client_channel_rx) =
-                channel::<(ConnectionKey, SocketAddr, Poller)>();
+            // let (client_channel_tx, client_channel_rx) =
+            //     channel::<(PollerKey, SocketAddr, Poller)>();
             let pipeline_mutex = Arc::new(Mutex::new(self.pipeline.clone()));
 
-            let connections: HashMap<ConnectionKey, (ConnectionKey, SocketAddr, Poller, Pipeline)> =
+            let connections: HashMap<Token, (PollerKey, SocketAddr, Poller, Pipeline)> =
                 HashMap::new();
             let connectiond_mutex = Arc::new(Mutex::new(connections));
 
@@ -92,11 +95,13 @@ pub mod http_entry_nonblocking {
 
                         let pipeline_mutex = pipeline_mutex.clone();
                         let connectiond_mutex = connectiond_mutex.clone();
+                        let salt = self.salt.clone();
                         thread::spawn(move || {
                             HttpEntryNonblocking::handle_connection(
                                 connection.0,
                                 connection.1,
                                 pipeline_mutex,
+                                salt,
                                 connectiond_mutex,
                             );
                         });
@@ -128,19 +133,81 @@ pub mod http_entry_nonblocking {
     }
 
     impl HttpEntryNonblocking {
+        fn write_handshake(token: &Token, connection: TcpStream) -> io::Result<()> {
+            let response = Response::builder()
+                .status(200)
+                .header(CLIENT_TOKEN_HEADER, token)
+                .body(vec![0u8; 0])
+                .unwrap();
+
+            write_response(connection, response);
+            Ok(())
+        }
+
+        fn write_invalid_access(connection: TcpStream) -> io::Result<()> {
+            let msg = "Invalid Token";
+            let response = Response::builder()
+                .status(403)
+                .body(msg.as_bytes().to_vec())
+                .unwrap();
+
+            write_response(connection, response);
+            return Err(io::Error::new(io::ErrorKind::InvalidData, msg));
+        }
+
+        fn write_existing_pipeline_error(connection: TcpStream) -> io::Result<()> {
+            let msg = "Piepline Already Exists";
+            let response = Response::builder()
+                .status(403)
+                .body(msg.as_bytes().to_vec())
+                .unwrap();
+
+            write_response(connection, response);
+            return Err(io::Error::new(io::ErrorKind::InvalidData, msg));
+        }
+
+        fn generate_token(ip: IpAddr, salt:&str)-> String{
+            let mut hasher =openssl::sha::Sha256::new();
+                let mut client_key =String::from_str(&ip.to_string()).unwrap();
+                client_key.push_str(&salt);
+                hasher.update(client_key.as_bytes());
+                let client_key = hasher.finish();
+                base64::encode_block(&client_key)
+        }
+
+        fn validate_token(ip: IpAddr, salt:&str, token: &str) -> bool { 
+            HttpEntryNonblocking::generate_token(ip, salt) == token
+        }
+
         fn handle_connection(
             mut connection: TcpStream,
             address: SocketAddr,
             pipeline_mutex: Arc<Mutex<Pipeline>>,
+            salt: String,
             connections: Arc<
-                Mutex<HashMap<ConnectionKey, (ConnectionKey, SocketAddr, Poller, Pipeline)>>,
+                Mutex<HashMap<Token, (PollerKey, SocketAddr, Poller, Pipeline)>>,
             >,
         ) -> io::Result<()> {
             let request = read_request(&mut connection)?;
+            
+            if request.headers().contains_key(CLIENT_TOKEN_HEADER) {
+                let token = HttpEntryNonblocking::generate_token(address.ip(), &salt);
+                let client_key = connections.lock().unwrap().len() + 1;
+                HttpEntryNonblocking::write_handshake(&token, connection);
+                let connections =  connections.as_ref().lock().unwrap();
+                if connections.contains_key(&token) {
+                    
+                }else {
+                    
+                }
 
-            if request.headers().contains_key("client_key") {
-
-            }else{
+            } else {
+                let token = request.headers().get(CLIENT_TOKEN_HEADER).unwrap().as_bytes();
+                let token = std::str::from_utf8(token).unwrap();
+                
+                if !HttpEntryNonblocking::validate_token(address.ip(), &salt, token) {
+                    return HttpEntryNonblocking::write_invalid_access(connection);
+                }
                 
             }
 
