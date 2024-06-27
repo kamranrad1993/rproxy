@@ -1,9 +1,17 @@
 pub mod http_entry_nonblocking {
     use std::{
-        collections::HashMap, io::{self, Read, Write}, net::{IpAddr, Shutdown, SocketAddr, TcpListener, TcpStream}, os::fd::AsRawFd, result, str::FromStr, sync::{
+        collections::HashMap,
+        io::{self, Read, Write},
+        net::{IpAddr, Shutdown, SocketAddr, TcpListener, TcpStream},
+        os::fd::AsRawFd,
+        result,
+        str::FromStr,
+        sync::{
             mpsc::{Receiver, Sender},
             Arc, Mutex,
-        }, thread, time::Duration
+        },
+        thread,
+        time::{Duration, SystemTime},
     };
 
     use http::{request, Response, Uri};
@@ -16,30 +24,28 @@ pub mod http_entry_nonblocking {
 
     use crate::{pipeline_module::pipeline, read_request, write_response, Entry, Pipeline};
 
-    type PollerKey = usize;
-    type Token = String;
-
     const CLIENT_TOKEN_HEADER: &str = "client_token";
 
     pub struct HttpEntryNonblocking {
         salt: String,
+        expiration_time: Duration,
         poller: Poller,
         listener: TcpListener,
-        listener_key: PollerKey,
+        listener_key: usize,
         pipeline: Pipeline,
         loop_time: u64,
     }
 
     impl Entry for HttpEntryNonblocking {
         fn new(config: String, pipeline: Pipeline, loop_time: u64) -> Self {
-            let config: Vec<&str> = config.split("|").collect();
-
+            let config: Vec<&str> = config.split('-').collect();
+            let timeout = Duration::from_secs(u64::from_str(config[2]).unwrap());
 
             let re = Regex::new(r"((https|http)?:\/\/)([^:/$]{1,})(?::(\d{1,}))").unwrap();
             if !re.is_match(&config[0]) {
                 panic!(
                     "unsupported config : {}. use with this format ws://host:port ",
-                    config
+                    config[0]
                 )
             }
 
@@ -61,6 +67,7 @@ pub mod http_entry_nonblocking {
                 listener_key: 1,
                 pipeline: pipeline,
                 loop_time,
+                expiration_time: timeout,
             }
         }
 
@@ -82,8 +89,7 @@ pub mod http_entry_nonblocking {
             //     channel::<(PollerKey, SocketAddr, Poller)>();
             let pipeline_mutex = Arc::new(Mutex::new(self.pipeline.clone()));
 
-            let connections: HashMap<Token, (PollerKey, SocketAddr, Poller, Pipeline)> =
-                HashMap::new();
+            let connections: HashMap<String, (SocketAddr, Pipeline, SystemTime)> = HashMap::new();
             let connectiond_mutex = Arc::new(Mutex::new(connections));
 
             loop {
@@ -111,29 +117,31 @@ pub mod http_entry_nonblocking {
                             .unwrap();
                     }
                 }
+
+                HttpEntryNonblocking::check_expiration(
+                    connectiond_mutex.clone(),
+                    self.expiration_time,
+                );
             }
         }
     }
 
     impl Clone for HttpEntryNonblocking {
         fn clone(&self) -> Self {
-            let mut connections = HashMap::new();
-            for data in self.connections.iter() {
-                connections.insert(data.0.clone(), (data.1 .0.try_clone().unwrap(), data.1 .1));
-            }
             Self {
+                salt: self.salt.clone(),
                 poller: Poller::new().unwrap(),
                 listener: self.listener.try_clone().unwrap(),
                 listener_key: self.listener_key.clone(),
-                connections: connections,
                 pipeline: self.pipeline.clone(),
                 loop_time: self.loop_time,
+                expiration_time: self.expiration_time,
             }
         }
     }
 
     impl HttpEntryNonblocking {
-        fn write_handshake(token: &Token, connection: TcpStream) -> io::Result<()> {
+        fn write_handshake(token: &str, connection: TcpStream) -> io::Result<()> {
             let response = Response::builder()
                 .status(200)
                 .header(CLIENT_TOKEN_HEADER, token)
@@ -166,17 +174,24 @@ pub mod http_entry_nonblocking {
             return Err(io::Error::new(io::ErrorKind::InvalidData, msg));
         }
 
-        fn generate_token(ip: IpAddr, salt:&str)-> String{
-            let mut hasher =openssl::sha::Sha256::new();
-                let mut client_key =String::from_str(&ip.to_string()).unwrap();
-                client_key.push_str(&salt);
-                hasher.update(client_key.as_bytes());
-                let client_key = hasher.finish();
-                base64::encode_block(&client_key)
+        fn generate_token(ip: IpAddr, salt: &str) -> String {
+            let mut hasher = openssl::sha::Sha256::new();
+            let mut client_key = String::from_str(&ip.to_string()).unwrap();
+            client_key.push_str(&salt);
+            hasher.update(client_key.as_bytes());
+            let client_key = hasher.finish();
+            base64::encode_block(&client_key)
         }
 
-        fn validate_token(ip: IpAddr, salt:&str, token: &str) -> bool { 
+        fn validate_token(ip: IpAddr, salt: &str, token: &str) -> bool {
             HttpEntryNonblocking::generate_token(ip, salt) == token
+        }
+
+        fn write_response(connection: TcpStream, data: Vec<u8>) -> io::Result<()> {
+            let response = Response::builder().status(200).body(data).unwrap();
+
+            write_response(connection, response);
+            Ok(())
         }
 
         fn handle_connection(
@@ -184,126 +199,63 @@ pub mod http_entry_nonblocking {
             address: SocketAddr,
             pipeline_mutex: Arc<Mutex<Pipeline>>,
             salt: String,
-            connections: Arc<
-                Mutex<HashMap<Token, (PollerKey, SocketAddr, Poller, Pipeline)>>,
-            >,
+            connections: Arc<Mutex<HashMap<String, (SocketAddr, Pipeline, SystemTime)>>>,
         ) -> io::Result<()> {
             let request = read_request(&mut connection)?;
-            
-            if request.headers().contains_key(CLIENT_TOKEN_HEADER) {
-                let token = HttpEntryNonblocking::generate_token(address.ip(), &salt);
-                let client_key = connections.lock().unwrap().len() + 1;
-                HttpEntryNonblocking::write_handshake(&token, connection);
-                let connections =  connections.as_ref().lock().unwrap();
-                if connections.contains_key(&token) {
-                    
-                }else {
-                    
-                }
 
+            if !request.headers().contains_key(CLIENT_TOKEN_HEADER) {
+                let token = HttpEntryNonblocking::generate_token(address.ip(), &salt);
+                let mut connections = connections.as_ref().lock().unwrap();
+                if connections.contains_key(token.clone().as_str()) {
+                    return HttpEntryNonblocking::write_existing_pipeline_error(connection);
+                } else {
+                    let mut pipeline = pipeline_mutex.lock().as_mut().unwrap().clone();
+                    pipeline.start();
+                    connections.insert(token.clone(), (address, pipeline, SystemTime::now()));
+                    return HttpEntryNonblocking::write_handshake(&token.clone(), connection);
+                }
             } else {
-                let token = request.headers().get(CLIENT_TOKEN_HEADER).unwrap().as_bytes();
+                let token = request
+                    .headers()
+                    .get(CLIENT_TOKEN_HEADER)
+                    .unwrap()
+                    .as_bytes();
                 let token = std::str::from_utf8(token).unwrap();
-                
+
                 if !HttpEntryNonblocking::validate_token(address.ip(), &salt, token) {
                     return HttpEntryNonblocking::write_invalid_access(connection);
+                } else {
+                    let mut connections = connections.as_ref().lock().unwrap();
+                    if connections.contains_key(token) {
+                        let mut pipeline = connections.get_mut(token).unwrap();
+                        pipeline.1.write(request.body().to_vec()).unwrap();
+                        pipeline.2 = SystemTime::now();
+
+                        let data = pipeline.1.read().unwrap();
+
+                        return HttpEntryNonblocking::write_response(connection, data);
+                    } else {
+                        return HttpEntryNonblocking::write_invalid_access(connection);
+                    }
                 }
-                
             }
+        }
 
-            // self.connections
-            // .insert(client_key, (client_key, client, client_address, self.pipeline.clone(), self.poller));
-
-            // self.pipeline.start();
-
-            // let client = self.connections.get_mut(&client_key).unwrap();
-            // client.0.set_nonblocking(true).unwrap();
-
-            // println!(
-            //     "new client connected, key : {}, address : {} ",
-            //     client_key, client.1
-            // );
-
-            // unsafe {
-            //     self.poller.add(&client.0, Event::all(client_key))?;
-            // }
-            // let mut events = Events::new();
-            // let mut is_connected = true;
-
-            // loop {
-            //     thread::sleep(Duration::from_millis(10));
-            //     self.poller.wait(&mut events, None).unwrap();
-
-            //     for ev in events.iter() {
-            //         if ev.key == client_key {
-            //             if ev.readable {
-            //                 match HttpEntryNonblocking::len(&mut client.0) {
-            //                     Ok(len) => {
-            //                         if len > 0 {
-            //                             let mut buf = vec![0; len];
-            //                             match client.0.read_exact(&mut buf) {
-            //                                 Ok(_) => {
-            //                                     let len = buf.len();
-            //                                     let final_size = self.pipeline.write(buf).unwrap();
-            //                                 }
-            //                                 Err(e) => {
-            //                                     println!("Error reading from stream: {}", e);
-            //                                     is_connected = false;
-            //                                     break;
-            //                                 }
-            //                             }
-            //                         } else {
-            //                             println!("Error reading from stream: {}", "Zero Length");
-            //                             is_connected = false;
-            //                             break;
-            //                         }
-            //                     }
-            //                     Err(e) => {
-            //                         println!("Error reading from stream: {}", e);
-            //                         is_connected = false;
-            //                         break;
-            //                     }
-            //                 }
-            //             }
-
-            //             if ev.writable {
-            //                 if self.pipeline.read_available() {
-            //                     let data = self.pipeline.read().unwrap();
-            //                     if !data.is_empty() {
-            //                         if let Err(e) = client.0.write(&data) {
-            //                             println!("Error writing to stream: {}", e);
-            //                             is_connected = false;
-            //                             break;
-            //                         }
-
-            //                         if let Err(e) = client.0.flush() {
-            //                             println!("Error flush stream: {}", e);
-            //                             is_connected = false;
-            //                             break;
-            //                         }
-            //                     }
-            //                 }
-            //             } else {
-            //                 // is_connected = false;
-            //                 // break;
-            //             }
-            //         }
-            //     }
-
-            //     if !is_connected {
-            //         break;
-            //     }
-
-            //     self.poller
-            //         .modify(&client.0, Event::all(client_key))
-            //         .unwrap();
-            // }
-            // client.0.shutdown(Shutdown::Both).unwrap();
-            // println!(
-            //     "client disconnected, key : {}, address : {} ",
-            //     client_key, client.1
-            // );
-            Ok(())
+        fn check_expiration(
+            connections: Arc<Mutex<HashMap<String, (SocketAddr, Pipeline, SystemTime)>>>,
+            timeout: Duration,
+        ) {
+            let mut connections = connections.as_ref().lock().unwrap();
+            let mut expired_token = vec![String::new(); 0];
+            for (token, data) in connections.iter_mut() {
+                let dur = SystemTime::now().duration_since(data.2).unwrap();
+                if dur > timeout {
+                    expired_token.push(token.clone());
+                }
+            }
+            for token in expired_token {
+                connections.remove(&token);
+            }
         }
     }
 }

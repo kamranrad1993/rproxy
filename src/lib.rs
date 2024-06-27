@@ -40,3 +40,6 @@ mod websocket_entry_nonblocking;
 pub use websocket_entry_nonblocking::websocket_entry_nonblocking::WSEntryNonBlocking;
 
 mod http_entry_nonblocking;
+pub use http_entry_nonblocking::http_entry_nonblocking::HttpEntryNonblocking;
+
+mod http_step;

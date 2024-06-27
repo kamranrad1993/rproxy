@@ -1,8 +1,6 @@
 use openssl::conf;
 use proxy::{
-    Base64, Entry, Pipeline, PipelineStep, STDioEntry, STDioStep, TCPEntry, TCPStep,
-    WebsocketDestination, WebsocketEntry, WssDestination, RSult, TcpEntryNonBlocking,
-    WSEntryNonBlocking
+    Base64, Entry, HttpEntryNonblocking, Pipeline, PipelineStep, RSult, STDioEntry, STDioStep, TCPEntry, TCPStep, TcpEntryNonBlocking, WSEntryNonBlocking, WebsocketDestination, WebsocketEntry, WssDestination
 };
 use std::{
     str::FromStr,
@@ -25,6 +23,7 @@ Entries:
   ws://
   stdio:
   tcp://
+  http://address-salt
 
 Steps:
   stdio:
@@ -93,6 +92,10 @@ fn main() {
         }
         Some("tcp") => {
             let mut entry = TcpEntryNonBlocking::new(entry, pipeline, loop_time);
+            entry.listen();
+        }
+        Some("http") => {
+            let mut entry = HttpEntryNonblocking::new(entry, pipeline, loop_time);
             entry.listen();
         }
         None | _ => {
