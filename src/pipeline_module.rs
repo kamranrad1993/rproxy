@@ -55,7 +55,7 @@ pub mod pipeline {
 
     pub trait PipelineStep: Read + Write + Send + Sync + BoxedClone {
         fn start(&mut self);
-        fn len(&self) -> std::io::Result<usize>;
+        fn len(&mut self) -> std::io::Result<usize>;
         fn set_pipeline_direction(&mut self, direction: PipelineDirection);
     }
 
@@ -144,8 +144,8 @@ pub mod pipeline {
             Ok(Vec::from(&data[0..size]))
         }
 
-        pub fn read_available(&self) -> bool {
-            self.steps.last().unwrap().len().unwrap() != 0
+        pub fn read_available(&mut self) -> bool {
+            self.steps.last_mut().unwrap().len().unwrap() != 0
         }
     }
 }

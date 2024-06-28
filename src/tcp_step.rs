@@ -18,7 +18,7 @@ pub mod tcp_step {
     }
 
     impl PipelineStep for TCPStep {
-        fn len(&self) -> std::io::Result<usize> {
+        fn len(&mut self) -> std::io::Result<usize> {
             let mut available: usize = 0;
             let result: i32 =
                 unsafe { libc::ioctl(self.get_stream().as_raw_fd(), libc::FIONREAD, &mut available) };

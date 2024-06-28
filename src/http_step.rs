@@ -1,6 +1,6 @@
 #[allow(non_snake_case, unused_variables, dead_code)]
 pub mod http_step {
-    use http::{method, Method, Response, StatusCode};
+    use http::{method, HeaderValue, Method, Response, StatusCode, Version};
     use std::io::{self, Read, Write};
     use std::net::TcpStream;
     use std::os::fd::AsRawFd;
@@ -22,20 +22,35 @@ pub mod http_step {
     }
 
     impl PipelineStep for HttpStep {
-        fn len(&self) -> std::io::Result<usize> {
-            let mut available: usize = 0;
-            let result: i32 = unsafe {
-                libc::ioctl(
-                    self.get_stream().as_raw_fd(),
-                    libc::FIONREAD,
-                    &mut available,
+        fn len(&mut self) -> std::io::Result<usize> {
+            let mut request = Request::builder()
+                .method(http::Method::HEAD)
+                .version(Version::HTTP_11)
+                .body(vec![0u8; 0])
+                .unwrap();
+            let response = self.write_request(&mut request)?;
+            if response
+                .headers()
+                .contains_key(http::header::CONTENT_LENGTH)
+            {
+                let l = response
+                .headers()
+                .get(http::header::CONTENT_LENGTH).unwrap().to_str();
+
+                Ok(usize::from_str(
+                    response
+                        .headers()
+                        .get(http::header::CONTENT_LENGTH)
+                        .unwrap()
+                        .to_str()
+                        .unwrap(),
                 )
-            };
-            if result == -1 {
-                let errno = std::io::Error::last_os_error();
-                Err(errno)
+                .unwrap())
             } else {
-                Ok(available)
+                Err(io::Error::new(
+                    io::ErrorKind::NotFound,
+                    "Content-Length Header Not Found",
+                ))
             }
         }
 
@@ -55,55 +70,29 @@ pub mod http_step {
     impl Read for HttpStep {
         fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
             let mut connection = self.make_connection()?;
-            match self.token {
-                Some(token) => {
-                    let request = Request::builder()
-                        .method(Method::GET)
-                        .header(CLIENT_TOKEN_HEADER, self.token.unwrap())
-                        .body(self.buffer)
-                        .unwrap();
 
-                    write_request(connection, &request)?;
-                    let response = read_response(&mut connection)?;
+            let mut request = Request::builder()
+                .method(Method::GET)
+                .version(Version::HTTP_11)
+                .header(http::header::CONTENT_LENGTH, self.buffer.len())
+                .body(self.buffer.to_vec())
+                .unwrap();
+            let response = self.write_request(&mut request)?;
 
-                    match Some(response.status()) {
-                        Some(StatusCode::OK) => {
-                            self.buffer.clear();
-                            
-                        }
-                        Some(StatusCode::FORBIDDEN) => {}
-                        Some(StatusCode::BAD_REQUEST) => {}
-                        None => {}
-                    }
+            match Some(response.status()) {
+                Some(StatusCode::OK) => {
+                    let wsize = self.buffer.len();
+                    self.buffer.clear();
 
-                    if response.status() != 200 {
-                        match std::str::from_utf8(response.body()) {
-                            Ok(msg) => {
-                                return Err(io::Error::new(io::ErrorKind::InvalidData, msg));
-                            }
-                            Err(e) => {
-                                return Err(io::Error::new(
-                                    io::ErrorKind::InvalidData,
-                                    "Invalid utf8",
-                                ));
-                            }
-                        }
-                    }
-
-                    match response.headers().get(CLIENT_TOKEN_HEADER) {
-                        Some(token) => {
-                            self.token = Some(String::from_str(token.to_str().unwrap()).unwrap());
-                            Ok(())
-                        }
-                        None => Err(io::Error::new(
-                            io::ErrorKind::InvalidData,
-                            "Token Not Found",
-                        )),
-                    }
+                    Ok(wsize)
                 }
-                None => {
-                    self.handshake(&mut connection)?;
-                    self.read(buf)
+                Some(_) | None => match std::str::from_utf8(response.body()) {
+                    Ok(msg) => {
+                        return Err(io::Error::new(io::ErrorKind::InvalidData, msg));
+                    }
+                    Err(e) => {
+                        return Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid utf8"));
+                    }
                 }
             }
         }
@@ -141,14 +130,69 @@ pub mod http_step {
             TcpStream::connect(addr)
         }
 
-        fn handshake(&mut self, connection: &mut TcpStream) -> io::Result<()> {
+        fn write_request(
+            &mut self,
+            request: &mut Request<Vec<u8>>,
+        ) -> io::Result<Response<Vec<u8>>> {
+            let mut connection = self.make_connection()?;
+            match self.token.clone() {
+                Some(token) => {
+                    request
+                        .headers_mut()
+                        .append(CLIENT_TOKEN_HEADER, HeaderValue::from_str(&token).unwrap());
+
+                    write_request(&mut connection, request)?;
+                    let response = read_response(&mut connection)?;
+                    match Some(response.status()) {
+                        Some(StatusCode::FORBIDDEN) => {
+                            match std::str::from_utf8(response.body()) {
+                                Ok(msg) => {
+                                    println!("{}", msg);
+                                    self.handshake(connection)?;
+                                    self.write_request(request);
+                                    // return Err(io::Error::new(io::ErrorKind::InvalidData, msg));
+                                }
+                                Err(e) => {
+                                    return Err(io::Error::new(
+                                        io::ErrorKind::InvalidData,
+                                        "Invalid utf8",
+                                    ));
+                                }
+                            }
+                        }
+                        Some(StatusCode::OK) => {
+                            return Ok(response);
+                        }
+                        Some(_) | None => match std::str::from_utf8(response.body()) {
+                            Ok(msg) => {
+                                return Err(io::Error::new(io::ErrorKind::InvalidData, msg));
+                            }
+                            Err(e) => {
+                                return Err(io::Error::new(
+                                    io::ErrorKind::InvalidData,
+                                    "Invalid utf8",
+                                ));
+                            }
+                        },
+                    }
+                    Ok(response)
+                }
+                None => {
+                    self.handshake(connection)?;
+                    self.write_request(request)
+                }
+            }
+        }
+
+        fn handshake(&mut self, mut connection: TcpStream) -> io::Result<()> {
             let request = Request::builder()
                 .method(Method::GET)
+                .version(Version::HTTP_11)
                 .body(vec![0u8; 0])
                 .unwrap();
 
-            write_request(connection, &request)?;
-            let response = read_response(connection)?;
+            write_request( &mut connection, &request)?;
+            let response = read_response(&mut connection)?;
             if response.status() != 200 {
                 match std::str::from_utf8(response.body()) {
                     Ok(msg) => {

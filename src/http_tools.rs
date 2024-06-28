@@ -170,7 +170,7 @@ pub mod http_tools {
 
     pub fn read_response<T: Read + AsRawFd>(stream: &mut T) -> std::io::Result<Response<Vec<u8>>> {
         let size = get_available_bytes(stream)?;
-        let mut buffer = vec![0u8; size];
+        let mut buffer = vec![0u8; 1024];
 
         let size = stream.read(&mut buffer)?;
 
@@ -212,7 +212,7 @@ pub mod http_tools {
             match Some(response_line.0) {
                 Some("HTTP/0.9") => Version::HTTP_09,
                 Some("HTTP/1.0") => Version::HTTP_10,
-                Some("HTTP/1.1") => Version::HTTP_10,
+                Some("HTTP/1.1") => Version::HTTP_11,
                 Some("HTTP/2.0") => Version::HTTP_2,
                 Some("HTTP/3.0") => Version::HTTP_3,
                 Some(_) | None => {

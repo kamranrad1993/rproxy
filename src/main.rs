@@ -1,6 +1,8 @@
 use openssl::conf;
 use proxy::{
-    Base64, Entry, HttpEntryNonblocking, Pipeline, PipelineStep, RSult, STDioEntry, STDioStep, TCPEntry, TCPStep, TcpEntryNonBlocking, WSEntryNonBlocking, WebsocketDestination, WebsocketEntry, WssDestination
+    Base64, Entry, HttpEntryNonblocking, Pipeline, PipelineStep, RSult, STDioEntry, STDioStep,
+    TCPEntry, TCPStep, TcpEntryNonBlocking, WSEntryNonBlocking, WebsocketDestination,
+    WebsocketEntry, WssDestination, HttpStep
 };
 use std::{
     str::FromStr,
@@ -20,17 +22,18 @@ Options:
   -h, --help     Print help
 
 Entries:
-  ws://
+  ws://address
   stdio:
-  tcp://
+  tcp://address
   http://address-salt
 
 Steps:
   stdio:
-  ws://
+  ws://address
   b64:fw b64:bw
-  tcp://
+  tcp://address
   salt:fw-len salf:bw-len
+  http://address
 ";
 
 fn main() {
@@ -62,6 +65,7 @@ fn main() {
             Some("b64") => steps.push(Box::new(Base64::new(config))),
             Some("tcp") => steps.push(Box::new(TCPStep::new(step.as_str()))),
             Some("salt") => steps.push(Box::new(RSult::new(config))),
+            Some("http") => steps.push(Box::new(HttpStep::new(step.as_str()))),
             None | _ => {
                 print!("unknown step : {}", step);
             }
@@ -69,7 +73,10 @@ fn main() {
     }
     let pipeline = Pipeline::new(steps, Some(1024));
 
-    let loop_time: u64 = pargs.opt_value_from_str::<&str, u64>("-t").unwrap().unwrap_or(10);
+    let loop_time: u64 = pargs
+        .opt_value_from_str::<&str, u64>("-t")
+        .unwrap()
+        .unwrap_or(10);
 
     let entry = pargs.opt_value_from_str::<&str, String>("-e").unwrap();
     if entry == None {

@@ -22,7 +22,7 @@ pub mod base64 {
     }
 
     impl PipelineStep for Base64 {
-        fn len(&self) -> std::io::Result<usize> {
+        fn len(&mut self) -> std::io::Result<usize> {
             // Ok(self.forward_buffer.len())
             match self.pipeline_direction {
                 PipelineDirection::Forward => Ok(self.forward_buffer.len()),

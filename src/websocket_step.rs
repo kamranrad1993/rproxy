@@ -24,7 +24,7 @@ pub mod ws_destination {
     }
 
     impl PipelineStep for WebsocketDestination {
-        fn len(&self) -> std::io::Result<usize> {
+        fn len(&mut self) -> std::io::Result<usize> {
             let mut available: usize = 0;
             let result: i32 = unsafe {
                 libc::ioctl(
@@ -306,7 +306,7 @@ pub mod wss_destination {
     }
 
     impl PipelineStep for WssDestination {
-        fn len(&self) -> std::io::Result<usize> {
+        fn len(&mut self) -> std::io::Result<usize> {
             let mut available: usize = 0;
             let result: i32 =
                 unsafe { libc::ioctl(self.tcp_stream.as_raw_fd(), libc::FIONREAD, &mut available) };

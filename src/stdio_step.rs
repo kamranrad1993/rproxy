@@ -8,7 +8,7 @@ pub mod io_step {
     pub struct STDioStep {}
 
     impl PipelineStep for STDioStep {
-        fn len(&self) -> std::io::Result<usize> {
+        fn len(&mut self) -> std::io::Result<usize> {
             let mut available: usize = 0;
             let result: i32 = unsafe { libc::ioctl(0, libc::FIONREAD, &mut available) };
             if result == -1 {

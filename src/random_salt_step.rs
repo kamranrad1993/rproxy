@@ -20,7 +20,7 @@ pub mod random_salt_step {
     }
 
     impl PipelineStep for RSult {
-        fn len(&self) -> std::io::Result<usize> {
+        fn len(&mut self) -> std::io::Result<usize> {
             // Ok(self.forward_buffer.len())
             match self.pipeline_direction {
                 PipelineDirection::Forward => Ok(self.forward_buffer.len()),
