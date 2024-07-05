@@ -3,6 +3,7 @@ pub mod ws_destination {
     use bytes::BytesMut;
     use http::{response, StatusCode, Version};
     use hyper::{body::Body, Method, Request, Response, Uri};
+    use openssl::error;
     use polling::{Event, Events, Poller};
     use std::fmt::{Display, Error};
     use std::io::{self, Read, Write};
@@ -13,9 +14,10 @@ pub mod ws_destination {
     use tokio_util::codec::{Decoder, Encoder};
     use websocket_codec::{Message, MessageCodec};
 
-    use crate::pipeline_module::pipeline::{PipelineDirection, PipelineStep};
+    use crate::pipeline_module::pipeline::{IOError, PipelineDirection, PipelineStep};
     use crate::{
-        get_available_bytes, http_tools, read_response, write_request, BoxedClone, WssDestination,
+        get_available_bytes, http_tools, read_response, write_request, BoxedClone, EmptyRead,
+        WssDestination,
     };
 
     pub struct WebsocketDestination {
@@ -80,8 +82,8 @@ pub mod ws_destination {
         }
     }
 
-    impl Read for WebsocketDestination {
-        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+    impl crate::Read for WebsocketDestination {
+        fn read(&mut self) -> Result<Vec<u8>, IOError> {
             let mut available: usize = 0;
             let result: i32 = unsafe {
                 libc::ioctl(
@@ -93,50 +95,45 @@ pub mod ws_destination {
 
             if result == -1 {
                 let errno = std::io::Error::last_os_error();
-                Err(errno)
+                Err(IOError::IoError(errno))
             } else if available == 0 {
-                Ok(0)
+                Ok(EmptyRead)
             } else {
                 let mut byteData = BytesMut::new();
                 byteData.resize(available, 0);
                 if let Err(e) = self.get_stream().read(byteData.as_mut()) {
-                    return Err(e);
+                    return Err(IOError::IoError(e));
                 }
 
                 match MessageCodec::client().decode(&mut byteData) {
                     Ok(msg) => match msg {
                         Some(msg) => match msg.opcode() {
                             websocket_codec::Opcode::Text | websocket_codec::Opcode::Binary => {
-                                unsafe {
-                                    std::ptr::copy(
-                                        msg.data().as_ptr(),
-                                        buf.as_mut_ptr(),
-                                        msg.data().len(),
-                                    );
-                                }
-                                return Ok(msg.data().len());
+                                return Ok(msg.data().to_vec());
                             }
                             websocket_codec::Opcode::Close => {
                                 let e = io::Error::new(
                                     io::ErrorKind::ConnectionAborted,
                                     "server disconnected",
                                 );
-                                return Err(e);
+                                return Err(IOError::IoError(e));
                             }
-                            websocket_codec::Opcode::Ping | websocket_codec::Opcode::Pong => Ok(0),
+                            websocket_codec::Opcode::Ping | websocket_codec::Opcode::Pong => {
+                                Ok(EmptyRead)
+                            }
                         },
                         None => {
                             let e = io::Error::new(
                                 io::ErrorKind::InvalidData,
                                 "no valid message found",
                             );
-                            return Err(e);
+                            return Err(IOError::IoError(e));
                         }
                     },
                     Err(e) => {
                         let e = format!("{}", e);
                         let e = io::Error::new(io::ErrorKind::Other, e);
-                        return Err(e);
+                        return Err(IOError::IoError(e));
                     }
                 }
             }
@@ -203,11 +200,11 @@ pub mod ws_destination {
             let res = read_response(stream)?;
 
             if res.status() != StatusCode::from_u16(101).unwrap() {
-                println!("response: {}", std::str::from_utf8(res.body()).unwrap_or(""));
-                let e = io::Error::new(
-                    io::ErrorKind::NotFound,
-                    "",
+                println!(
+                    "response: {}",
+                    std::str::from_utf8(res.body()).unwrap_or("")
                 );
+                let e = io::Error::new(io::ErrorKind::NotFound, "");
                 return Err(e);
             }
 
@@ -232,7 +229,7 @@ pub mod wss_destination {
     use tungstenite::protocol::{Role, WebSocketContext};
     use tungstenite::{client, Message, WebSocket};
 
-    use crate::{BoxedClone, PipelineStep};
+    use crate::{BoxedClone, EmptyRead, IOError, PipelineStep};
 
     pub struct WssDestination {
         tcp_stream: TcpStream,
@@ -329,17 +326,17 @@ pub mod wss_destination {
         }
     }
 
-    impl Read for WssDestination {
-        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+    impl crate::Read for WssDestination {
+        fn read(&mut self) -> Result<Vec<u8>, IOError> {
             let mut available: usize = 0;
             let result: i32 =
                 unsafe { libc::ioctl(self.tcp_stream.as_raw_fd(), libc::FIONREAD, &mut available) };
 
             if result == -1 {
                 let errno = std::io::Error::last_os_error();
-                Err(errno)
+                Err(IOError::IoError(errno))
             } else if available == 0 {
-                Ok(0)
+                Ok(EmptyRead)
             } else {
                 let m = &mut self.get_websocket().read().unwrap();
                 // let mut m = &mut self
@@ -347,20 +344,15 @@ pub mod wss_destination {
                 //     .read::<TcpStream>(&mut self.tcp_stream)
                 //     .unwrap();
                 match m {
-                    Message::Text(data) => unsafe {
-                        std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.as_bytes().len());
-                        Ok(data.as_bytes().len())
-                    },
-                    Message::Binary(data) => unsafe {
-                        std::ptr::copy(data.as_mut_ptr(), buf.as_mut_ptr(), data.len());
-                        Ok(data.len())
-                    },
+                    Message::Text(data) => unsafe { Ok(data.as_bytes().to_vec()) },
+                    Message::Binary(data) => unsafe { Ok(data.clone()) },
                     Message::Close(e) => {
                         let errno = std::io::Error::last_os_error();
-                        Err(errno)
-                        // Err("{}", e.unwrap().code);
+                        Err(IOError::IoError(errno))
                     }
-                    Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => Ok(0),
+                    Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => {
+                        Ok(EmptyRead)
+                    }
                 }
                 // self.tcp_stream.read(buf)
             }

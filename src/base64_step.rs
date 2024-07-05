@@ -1,16 +1,16 @@
 #[allow(noop_method_call, unused_assignments)]
 pub mod base64 {
 
-    use crate::{pipeline_module::pipeline::{PipelineDirection, PipelineStep}, BoxedClone};
+    use crate::{
+        pipeline_module::pipeline::{PipelineDirection, PipelineStep},
+        BoxedClone, IOError, Read,
+    };
     use base64::{
         alphabet,
         engine::{general_purpose::NO_PAD, GeneralPurpose},
         Engine as _,
     };
-    use std::{
-        collections::VecDeque,
-        io::{Read, Write},
-    };
+    use std::{collections::VecDeque, io::Write};
 
     pub const B64_ENGINE: GeneralPurpose = GeneralPurpose::new(&alphabet::BIN_HEX, NO_PAD);
     pub const NEW_LINE: &[u8] = &[b'\n'; 1];
@@ -47,19 +47,17 @@ pub mod base64 {
     }
 
     impl Read for Base64 {
-        fn read(&mut self, mut buf: &mut [u8]) -> std::io::Result<usize> {
+        fn read(&mut self) -> Result<Vec<u8>, IOError> {
             match self.pipeline_direction {
                 PipelineDirection::Forward => {
-                    let length = std::cmp::min(self.forward_buffer.len(), buf.len());
-                    let size = buf.write(&self.forward_buffer[0..length]).unwrap();
-                    self.forward_buffer.drain(0..size);
-                    Ok(size)
+                    let result = self.forward_buffer.clone();
+                    self.forward_buffer.clear();
+                    Ok(result)
                 }
                 PipelineDirection::Backward => {
-                    let length = std::cmp::min(self.backward_buffer.len(), buf.len());
-                    let size = buf.write(&self.backward_buffer[0..length]).unwrap();
-                    self.backward_buffer.drain(0..size);
-                    Ok(size)
+                    let result = self.backward_buffer.clone();
+                    self.backward_buffer.clear();
+                    Ok(result)
                 }
             }
         }

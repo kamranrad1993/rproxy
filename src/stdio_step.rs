@@ -1,9 +1,9 @@
 pub mod io_step {
     use crate::{
-        pipeline_module::pipeline::{PipelineDirection, PipelineStep},
-        BoxedClone,
+        pipeline_module::pipeline::{IOError, PipelineDirection, PipelineStep},
+        BoxedClone, EmptyRead,
     };
-    use std::io::{stdin, stdout, Read, Write};
+    use std::io::{stdin, stdout, Write, Read};
 
     pub struct STDioStep {}
 
@@ -37,20 +37,22 @@ pub mod io_step {
         }
     }
 
-    impl Read for STDioStep {
-        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
-            let mut io = stdin();
-            let mut available: usize = 0;
-            let result: i32 = unsafe { libc::ioctl(0, libc::FIONREAD, &mut available) };
+    impl crate::Read for STDioStep {
+        fn read(&mut self) -> Result<Vec<u8>, IOError> {
+                let mut io = stdin();
+                let mut available: usize = 0;
+                let result: i32 = unsafe { libc::ioctl(0, libc::FIONREAD, &mut available) };
 
-            if result == -1 {
-                let errno = std::io::Error::last_os_error();
-                Err(errno)
-            } else if available == 0 {
-                Ok(0)
-            } else {
-                io.read(buf)
-            }
+                if result == -1 {
+                    let errno = std::io::Error::last_os_error();
+                    Err(IOError::IoError(errno))
+                } else if available == 0 {
+                    Ok(EmptyRead)
+                } else {
+                    let mut result = vec![0u8; available];
+                    io.read(result.as_mut_slice());
+                    Ok(result)
+                }
         }
     }
 

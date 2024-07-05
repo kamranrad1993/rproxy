@@ -1,14 +1,14 @@
 #[allow(noop_method_call, unused_assignments)]
 pub mod random_salt_step {
     use crate::{
-        pipeline_module::pipeline::{PipelineDirection, PipelineStep},
+        pipeline_module::pipeline::{IOError, PipelineDirection, PipelineStep, Read},
         BoxedClone,
     };
     use openssl::string;
     use rand::Rng;
     use std::{
         collections::VecDeque,
-        io::{Read, Write},
+        io::{self, Write}, result,
     };
 
     pub struct RSult {
@@ -37,7 +37,7 @@ pub mod random_salt_step {
 
     impl BoxedClone for RSult {
         fn bclone(&self) -> Box<dyn PipelineStep> {
-            let mut config : String = String::new();
+            let mut config: String = String::new();
             match self.work_mode {
                 PipelineDirection::Forward => config.push_str("fw-"),
                 PipelineDirection::Backward => config.push_str("bw-"),
@@ -48,19 +48,17 @@ pub mod random_salt_step {
     }
 
     impl Read for RSult {
-        fn read(&mut self, mut buf: &mut [u8]) -> std::io::Result<usize> {
+        fn read(&mut self) -> Result<Vec<u8>, IOError> {
             match self.pipeline_direction {
                 PipelineDirection::Forward => {
-                    let length = std::cmp::min(self.forward_buffer.len(), buf.len());
-                    let size = buf.write(&self.forward_buffer[0..length]).unwrap();
-                    self.forward_buffer.drain(0..size);
-                    Ok(size)
+                    let result = self.forward_buffer.clone();
+                    self.forward_buffer.clear();
+                    Ok(result)
                 }
                 PipelineDirection::Backward => {
-                    let length = std::cmp::min(self.backward_buffer.len(), buf.len());
-                    let size = buf.write(&self.backward_buffer[0..length]).unwrap();
-                    self.backward_buffer.drain(0..size);
-                    Ok(size)
+                    let result = self.backward_buffer.clone();
+                    self.backward_buffer.clear();
+                    Ok(result)
                 }
             }
         }

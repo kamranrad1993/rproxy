@@ -37,7 +37,9 @@
             // "args": "-e stdio: -s salt:fw-10 -s ws://x2.bikehike.ir:80",
             // "args" : "-t 50 -e ws://0.0.0.0:2002 -s stdio:",
             // "args" : "-e http://127.0.0.1:6666-123-5 -s stdio:",
-            "args" : "-e stdio: -s http://127.0.0.1:6666",
+            // "args" : "-e stdio: -s http://127.0.0.1:6666",
+            // "args" : "-e tcp://127.0.0.1:6667 -s http:s//127.0.0.1:6666",
+            "args" : "-e http://127.0.0.1:6666-123-500  -s b64:bw -s tcp://127.0.0.1:22",
 
             "env": {
                 "RUST_BACKTRACE": "1",

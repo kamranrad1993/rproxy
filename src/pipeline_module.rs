@@ -3,10 +3,12 @@
 pub mod pipeline {
     use std::{
         fmt::Display,
-        io::{self, Read, Write},
+        io::{self, Write},
         ops::{BitAnd, Deref, DerefMut},
         string::ParseError,
     };
+
+    pub const EmptyRead : Vec<u8> = Vec::<u8>::new();
 
     #[derive(Debug)]
     pub enum IOError {
@@ -14,8 +16,19 @@ pub mod pipeline {
         InvalidBindAddress,
         UnknownError(String),
         IoError(io::Error),
-        ParseError(ParseError),
+        ParseError,
         InvalidStep(String),
+        InvalidData(String),
+    }
+
+    impl From<std::io::Error>  for IOError{
+        fn from(value: std::io::Error) -> Self {
+            IOError::IoError(value)
+        }
+    }
+
+    pub trait Read {
+        fn read(&mut self) -> Result<Vec<u8>, IOError>;
     }
 
     pub trait BoxedClone {
@@ -106,19 +119,15 @@ pub mod pipeline {
             for i in 0..self.steps.len() {
                 self.steps[i].set_pipeline_direction(PipelineDirection::Forward);
             }
-            let mut size = 0;
 
             for i in 0..self.steps.len() {
                 self.steps[i].write(&data).unwrap();
                 self.steps[i].flush().unwrap();
-                size = self.steps[i].len().unwrap();
                 if i != (self.steps.len() - 1) {
-                    data.clear();
-                    data.resize(size, 0);
-                    size = self.steps[i].read(data.as_mut_slice()).unwrap();
+                    data = self.steps[i].read()?;
                 }
             }
-            Ok(size)
+            Ok(data.len())
         }
 
         pub fn read(&mut self) -> Result<Vec<u8>, IOError> {
@@ -128,24 +137,23 @@ pub mod pipeline {
 
             let mut data: Vec<u8> = Vec::new();
             data.resize(self.buffer_size.unwrap(), 0);
-            let mut size = 0;
 
             for i in (0..self.steps.len()).rev() {
-                size = self.steps[i].len().unwrap();
-                data.clear();
-                data.resize(size, 0);
-                size = self.steps[i].read(data.as_mut_slice()).unwrap();
-                // self.steps[i].read(data.as_mut_slice()).unwrap();
-                if size > 0 && i != 0 {
-                    self.steps[i - 1].write(&data[0..size]).unwrap();
+                data = self.steps[i].read()?;
+                if data.len() > 0 && i != 0 {
+                    self.steps[i - 1].write(&data).unwrap();
                     self.steps[i - 1].flush().unwrap();
                 }
             }
-            Ok(Vec::from(&data[0..size]))
+            Ok(data)
         }
 
         pub fn read_available(&mut self) -> bool {
             self.steps.last_mut().unwrap().len().unwrap() != 0
+        }
+
+        pub fn len(&mut self) -> std::io::Result<usize>{
+            self.steps.last_mut().unwrap().len()
         }
     }
 }

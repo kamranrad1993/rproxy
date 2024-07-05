@@ -1,13 +1,13 @@
 pub mod http_tools {
     use http::{request, response, version, Request, Response, Version};
     use rand::seq;
-    use tungstenite::buffer;
     use std::{
         io::{self, Read, Result, Write},
         iter::{self, Iterator},
         os::fd::AsRawFd,
         str::{self, Utf8Error},
     };
+    use tungstenite::buffer;
 
     // #[test]
     // pub fn test_version() -> Result<()> {
@@ -25,6 +25,7 @@ pub mod http_tools {
         write!(buffer, "HTTP/1.1 {}\r\n", response.status(),)?;
 
         for (key, value) in response.headers() {
+            println!("{}{}", key, value.to_str().unwrap());
             write!(buffer, "{}: {}\r\n", key, value.to_str().unwrap())?;
         }
 
@@ -99,7 +100,11 @@ pub mod http_tools {
     }
 
     pub fn read_request<T: Read + AsRawFd>(stream: &mut T) -> std::io::Result<Request<Vec<u8>>> {
-        let size = get_available_bytes(stream)?;
+        let mut size = 0;
+        while size ==0 {
+            size = get_available_bytes(stream)?;
+        }
+        // let size = get_available_bytes(stream)?;
         let mut buffer = vec![0u8; size];
 
         let size = stream.read(&mut buffer)?;
@@ -114,7 +119,9 @@ pub mod http_tools {
                 b'\n' => {
                     separator_buf.push(value);
                     if separator_buf.len() > 3 {
-                        has_body = (true, index + 1, size);
+                        if index + 1 != size {
+                            has_body = (true, index + 1, size);
+                        }
                         break;
                     }
                 }
@@ -169,8 +176,13 @@ pub mod http_tools {
     }
 
     pub fn read_response<T: Read + AsRawFd>(stream: &mut T) -> std::io::Result<Response<Vec<u8>>> {
-        let size = get_available_bytes(stream)?;
-        let mut buffer = vec![0u8; 1024];
+        let mut size = 0;
+        while size ==0 {
+            size = get_available_bytes(stream)?;
+        }
+        // let size = get_available_bytes(stream)?;
+
+        let mut buffer = vec![0u8; size];
 
         let size = stream.read(&mut buffer)?;
 
@@ -184,7 +196,9 @@ pub mod http_tools {
                 b'\n' => {
                     separator_buf.push(value);
                     if separator_buf.len() > 3 {
-                        has_body = (true, index + 1, size);
+                        if index + 1 != size {
+                            has_body = (true, index + 1, size);
+                        }
                         break;
                     }
                 }
@@ -203,7 +217,6 @@ pub mod http_tools {
                 }
             }
         }
-
 
         let mut builder = response::Response::builder();
 
@@ -225,6 +238,7 @@ pub mod http_tools {
 
         for (chunk_index, index) in sequence[1..].iter().enumerate() {
             let (header, header_val) = parse_header(&buffer[index.0..index.1]).unwrap();
+            println!("{}, {}", header, header_val);
             builder = builder.header(header, header_val);
         }
 
@@ -237,5 +251,4 @@ pub mod http_tools {
             Ok(request)
         }
     }
-
 }

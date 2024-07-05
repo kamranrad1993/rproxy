@@ -22,7 +22,7 @@ pub mod http_entry_nonblocking {
     use std::sync::mpsc::channel;
     use threadpool::ThreadPool;
 
-    use crate::{pipeline_module::pipeline, read_request, write_response, Entry, Pipeline};
+    use crate::{pipeline_module::pipeline, read_request, write_response, Entry, IOError, Pipeline};
 
     const CLIENT_TOKEN_HEADER: &str = "client_token";
 
@@ -110,7 +110,7 @@ pub mod http_entry_nonblocking {
                                 pipeline_mutex,
                                 salt,
                                 connectiond_mutex,
-                            );
+                            ).unwrap();
                         });
 
                         self.poller
@@ -142,7 +142,7 @@ pub mod http_entry_nonblocking {
     }
 
     impl HttpEntryNonblocking {
-        fn write_handshake(token: &str, connection: TcpStream) -> io::Result<()> {
+        fn write_handshake(token: &str, connection: TcpStream) -> Result<(), IOError> {
             let response = Response::builder()
                 .status(StatusCode::OK)
                 .header(CLIENT_TOKEN_HEADER, token)
@@ -154,7 +154,7 @@ pub mod http_entry_nonblocking {
             Ok(())
         }
 
-        fn write_invalid_access(connection: TcpStream) -> io::Result<()> {
+        fn write_invalid_access(connection: TcpStream) -> Result<(), IOError> {
             let msg = "Invalid Token";
             let response = Response::builder()
                 .status(StatusCode::FORBIDDEN)
@@ -162,10 +162,10 @@ pub mod http_entry_nonblocking {
                 .unwrap();
 
             write_response(connection, response)?;
-            return Err(io::Error::new(io::ErrorKind::InvalidData, msg));
+            return Err(IOError::InvalidData(msg.to_string()));
         }
 
-        fn write_existing_pipeline_error(connection: TcpStream) -> io::Result<()> {
+        fn write_existing_pipeline_error(connection: TcpStream) -> Result<(), IOError> {
             let msg = "Piepline Already Exists";
             let response = Response::builder()
                 .status(StatusCode::BAD_REQUEST)
@@ -173,10 +173,10 @@ pub mod http_entry_nonblocking {
                 .unwrap();
 
             write_response(connection, response)?;
-            return Err(io::Error::new(io::ErrorKind::InvalidData, msg));
+            return Err(IOError::InvalidData(msg.to_string()));
         }
 
-        fn write_unsupported_http_method_error(connection: TcpStream) -> io::Result<()> {
+        fn write_unsupported_http_method_error(connection: TcpStream) -> Result<(), IOError> {
             let msg = "Unsupported Http Method";
             let response = Response::builder()
                 .status(StatusCode::BAD_REQUEST)
@@ -184,7 +184,7 @@ pub mod http_entry_nonblocking {
                 .unwrap();
 
             write_response(connection, response)?;
-            return Err(io::Error::new(io::ErrorKind::InvalidData, msg));
+            return Err(IOError::InvalidData(msg.to_string()));
         }
 
         fn generate_token(ip: IpAddr, salt: &str) -> String {
@@ -200,21 +200,24 @@ pub mod http_entry_nonblocking {
             HttpEntryNonblocking::generate_token(ip, salt) == token
         }
 
-        fn write_response(connection: TcpStream, data: Vec<u8>) -> io::Result<()> {
+        fn write_response(connection: TcpStream, data: Vec<u8>) -> Result<(), IOError> {
             let response = Response::builder()
-            .status(StatusCode::OK)
-            .header(http::header::CONTENT_LENGTH, data.len())
-            .body(data).unwrap();
+                .status(StatusCode::OK)
+                .header(http::header::CONTENT_LENGTH, data.len())
+                .body(data)
+                .unwrap();
+
 
             write_response(connection, response)?;
             Ok(())
         }
 
-        fn write_content_len(connection: TcpStream, len: usize) -> io::Result<()> {
+        fn write_content_len(connection: TcpStream, len: usize) -> Result<(), IOError> {
             let response = Response::builder()
-            .status(StatusCode::OK)
-            .header(http::header::CONTENT_LENGTH,len)
-            .body(vec![0u8;0]).unwrap();
+                .status(StatusCode::OK)
+                .header(http::header::CONTENT_LENGTH, len)
+                .body(vec![0u8; 0])
+                .unwrap();
 
             write_response(connection, response)?;
             Ok(())
@@ -226,26 +229,27 @@ pub mod http_entry_nonblocking {
             pipeline_mutex: Arc<Mutex<Pipeline>>,
             salt: String,
             connections: Arc<Mutex<HashMap<String, (SocketAddr, Pipeline, SystemTime)>>>,
-        ) -> io::Result<()> {
+        ) -> Result<(), IOError> {
             let request = read_request(&mut connection)?;
 
-            println!("new req {}", address.to_string());
-            for (key, value) in request.headers() {
-                println!("{}:{}", key, value.to_str().unwrap());
-            }
-            println!("+++++++++++++++++++++++++++++++++");
-
             if !request.headers().contains_key(CLIENT_TOKEN_HEADER) {
+
+                println!("new req {}", address.to_string());
+                for (key, value) in request.headers() {
+                    println!("{}:{}", key, value.to_str().unwrap());
+                }
+                println!("+++++++++++++++++++++++++++++++++");    
+
                 let token = HttpEntryNonblocking::generate_token(address.ip(), &salt);
                 let mut connections = connections.as_ref().lock().unwrap();
                 if connections.contains_key(token.clone().as_str()) {
-                    return HttpEntryNonblocking::write_existing_pipeline_error(connection);
-                } else {
-                    let mut pipeline = pipeline_mutex.lock().as_mut().unwrap().clone();
-                    pipeline.start();
-                    connections.insert(token.clone(), (address, pipeline, SystemTime::now()));
-                    return HttpEntryNonblocking::write_handshake(&token.clone(), connection);
+                    // return HttpEntryNonblocking::write_existing_pipeline_error(connection);
+                    connections.remove(token.clone().as_str());
                 }
+                let mut pipeline = pipeline_mutex.lock().as_mut().unwrap().clone();
+                pipeline.start();
+                connections.insert(token.clone(), (address, pipeline, SystemTime::now()));
+                return HttpEntryNonblocking::write_handshake(&token.clone(), connection);
             } else {
                 let token = request
                     .headers()
@@ -263,33 +267,38 @@ pub mod http_entry_nonblocking {
                     Some(&http::Method::GET) => {
                         if connections.contains_key(token) {
                             let mut pipeline = connections.get_mut(token).unwrap();
+                            let d = request.body().to_vec();
                             pipeline.1.write(request.body().to_vec()).unwrap();
                             pipeline.2 = SystemTime::now();
-    
+
                             let data = pipeline.1.read().unwrap();
-    
+
                             return HttpEntryNonblocking::write_response(connection, data);
                         } else {
                             return HttpEntryNonblocking::write_invalid_access(connection);
                         }
-                    },
+                    }
                     Some(&http::Method::HEAD) => {
                         if connections.contains_key(token) {
                             let mut pipeline = connections.get_mut(token).unwrap();
-                            pipeline.1.write(request.body().to_vec()).unwrap();
+                            // pipeline.1.write(request.body().to_vec()).unwrap();
                             pipeline.2 = SystemTime::now();
-    
-                            let pipeline_len = pipeline.1.len();
-    
-                            return HttpEntryNonblocking::write_content_len(connection, pipeline_len);
+
+                            let pipeline_len = pipeline.1.len()?;
+
+                            return HttpEntryNonblocking::write_content_len(
+                                connection,
+                                pipeline_len,
+                            );
                         } else {
                             return HttpEntryNonblocking::write_invalid_access(connection);
                         }
-                    },
-                    Some(_) |
-                    None => {
-                        return HttpEntryNonblocking::write_unsupported_http_method_error(connection);
-                    },
+                    }
+                    Some(_) | None => {
+                        return HttpEntryNonblocking::write_unsupported_http_method_error(
+                            connection,
+                        );
+                    }
                 }
             }
         }

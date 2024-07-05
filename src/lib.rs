@@ -1,5 +1,7 @@
 mod http_tools;
-pub use http_tools::http_tools::{read_request, read_response, write_response, write_request, get_available_bytes};
+pub use http_tools::http_tools::{
+    get_available_bytes, read_request, read_response, write_request, write_response,
+};
 
 mod entry_module;
 pub use entry_module::entry_module::Entry;
@@ -16,6 +18,7 @@ pub use tcp_entry::tcp_entry::TCPEntry;
 mod pipeline_module;
 pub use pipeline_module::{
     pipeline::BoxedClone, pipeline::Pipeline, pipeline::PipelineDirection, pipeline::PipelineStep,
+    pipeline::Read, pipeline::IOError, pipeline::EmptyRead
 };
 
 mod websocket_step;

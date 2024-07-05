@@ -1,16 +1,15 @@
 #[allow(non_snake_case, unused_variables, dead_code)]
 pub mod http_step {
     use http::{method, HeaderValue, Method, Response, StatusCode, Version};
-    use std::io::{self, Read, Write};
+    use std::io::{self, Write};
     use std::net::TcpStream;
     use std::os::fd::AsRawFd;
     use std::str::FromStr;
-    use tungstenite::client::IntoClientRequest;
     use tungstenite::http::{Request, Uri};
     use tungstenite::protocol::{Role, WebSocketContext};
     use tungstenite::{client, Message, WebSocket};
 
-    use crate::pipeline_module::pipeline::{PipelineDirection, PipelineStep};
+    use crate::pipeline_module::pipeline::{IOError, PipelineDirection, PipelineStep, Read};
     use crate::{read_response, write_request, BoxedClone};
 
     const CLIENT_TOKEN_HEADER: &str = "client_token";
@@ -23,34 +22,42 @@ pub mod http_step {
 
     impl PipelineStep for HttpStep {
         fn len(&mut self) -> std::io::Result<usize> {
-            let mut request = Request::builder()
-                .method(http::Method::HEAD)
-                .version(Version::HTTP_11)
-                .body(vec![0u8; 0])
-                .unwrap();
-            let response = self.write_request(&mut request)?;
-            if response
-                .headers()
-                .contains_key(http::header::CONTENT_LENGTH)
-            {
-                let l = response
-                .headers()
-                .get(http::header::CONTENT_LENGTH).unwrap().to_str();
-
-                Ok(usize::from_str(
-                    response
+            // Ok(self.buffer.len())
+            if self.buffer.len() != 0 {
+                Ok(self.buffer.len())
+            } else {
+                let mut request = Request::builder()
+                    .method(http::Method::HEAD)
+                    .version(Version::HTTP_11)
+                    .body(vec![0u8; 0])
+                    .unwrap();
+                let response = self.write_request(&mut request)?;
+                if response
+                    .headers()
+                    .contains_key(http::header::CONTENT_LENGTH)
+                {
+                    let l = response
                         .headers()
                         .get(http::header::CONTENT_LENGTH)
                         .unwrap()
-                        .to_str()
-                        .unwrap(),
-                )
-                .unwrap())
-            } else {
-                Err(io::Error::new(
-                    io::ErrorKind::NotFound,
-                    "Content-Length Header Not Found",
-                ))
+                        .to_str();
+
+                    let len = usize::from_str(
+                        response
+                            .headers()
+                            .get(http::header::CONTENT_LENGTH)
+                            .unwrap()
+                            .to_str()
+                            .unwrap(),
+                    )
+                    .unwrap();
+                    Ok(len)
+                } else {
+                    Err(io::Error::new(
+                        io::ErrorKind::NotFound,
+                        "Content-Length Header Not Found",
+                    ))
+                }
             }
         }
 
@@ -68,7 +75,7 @@ pub mod http_step {
     }
 
     impl Read for HttpStep {
-        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        fn read(&mut self) -> Result<Vec<u8>, IOError> {
             let mut connection = self.make_connection()?;
 
             let mut request = Request::builder()
@@ -81,19 +88,18 @@ pub mod http_step {
 
             match Some(response.status()) {
                 Some(StatusCode::OK) => {
-                    let wsize = self.buffer.len();
+                    let wsize = response.body().len();
                     self.buffer.clear();
-
-                    Ok(wsize)
+                    Ok(response.body().clone())
                 }
                 Some(_) | None => match std::str::from_utf8(response.body()) {
                     Ok(msg) => {
-                        return Err(io::Error::new(io::ErrorKind::InvalidData, msg));
+                        return Err(IOError::UnknownError(msg.to_string()));
                     }
                     Err(e) => {
-                        return Err(io::Error::new(io::ErrorKind::InvalidData, "Invalid utf8"));
+                        return Err(IOError::ParseError);
                     }
-                }
+                },
             }
         }
     }
@@ -191,7 +197,7 @@ pub mod http_step {
                 .body(vec![0u8; 0])
                 .unwrap();
 
-            write_request( &mut connection, &request)?;
+            write_request(&mut connection, &request)?;
             let response = read_response(&mut connection)?;
             if response.status() != 200 {
                 match std::str::from_utf8(response.body()) {

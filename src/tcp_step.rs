@@ -9,8 +9,8 @@ pub mod tcp_step {
     use tungstenite::protocol::{Role, WebSocketContext};
     use tungstenite::{client, Message, WebSocket};
 
-    use crate::pipeline_module::pipeline::{PipelineDirection, PipelineStep};
-    use crate::BoxedClone;
+    use crate::pipeline_module::pipeline::{IOError, PipelineDirection, PipelineStep};
+    use crate::{BoxedClone, EmptyRead};
 
     pub struct TCPStep {
         tcp_stream: Option<TcpStream>,
@@ -20,8 +20,13 @@ pub mod tcp_step {
     impl PipelineStep for TCPStep {
         fn len(&mut self) -> std::io::Result<usize> {
             let mut available: usize = 0;
-            let result: i32 =
-                unsafe { libc::ioctl(self.get_stream().as_raw_fd(), libc::FIONREAD, &mut available) };
+            let result: i32 = unsafe {
+                libc::ioctl(
+                    self.get_stream().as_raw_fd(),
+                    libc::FIONREAD,
+                    &mut available,
+                )
+            };
             if result == -1 {
                 let errno = std::io::Error::last_os_error();
                 Err(errno)
@@ -55,19 +60,26 @@ pub mod tcp_step {
         }
     }
 
-    impl Read for TCPStep {
-        fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+    impl crate::Read for TCPStep {
+        fn read(&mut self) -> Result<Vec<u8>, IOError> {
             let mut available: usize = 0;
-            let result: i32 =
-                unsafe { libc::ioctl(self.get_stream().as_raw_fd(), libc::FIONREAD, &mut available) };
+            let result: i32 = unsafe {
+                libc::ioctl(
+                    self.get_stream().as_raw_fd(),
+                    libc::FIONREAD,
+                    &mut available,
+                )
+            };
 
             if result == -1 {
                 let errno = std::io::Error::last_os_error();
-                Err(errno)
+                Err(IOError::IoError(errno))
             } else if available == 0 {
-                Ok(0)
+                Ok(EmptyRead)
             } else {
-                self.get_stream().read(buf)
+                let mut result = vec![0u8; available];
+                self.get_stream().read(result.as_mut_slice());
+                Ok(result)
             }
         }
     }
@@ -85,7 +97,6 @@ pub mod tcp_step {
     #[allow(unreachable_code)]
     impl TCPStep {
         pub fn new(address: &str) -> Self {
-            
             //handle errors
             TCPStep {
                 tcp_stream: None,
@@ -93,7 +104,7 @@ pub mod tcp_step {
             }
         }
 
-        fn get_stream(&self ) -> &TcpStream {
+        fn get_stream(&self) -> &TcpStream {
             self.tcp_stream.as_ref().unwrap()
         }
     }
