@@ -18,7 +18,7 @@ pub use tcp_entry::tcp_entry::TCPEntry;
 mod pipeline_module;
 pub use pipeline_module::{
     pipeline::BoxedClone, pipeline::Pipeline, pipeline::PipelineDirection, pipeline::PipelineStep,
-    pipeline::Read, pipeline::IOError, pipeline::EmptyRead
+    pipeline::Read, pipeline::IOError,
 };
 
 mod websocket_step;

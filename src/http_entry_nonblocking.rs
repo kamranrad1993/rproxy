@@ -16,13 +16,15 @@ pub mod http_entry_nonblocking {
 
     use http::{request, Response, StatusCode, Uri};
     use hyper::client::{self, conn};
-    use openssl::{base64, sha::sha256, string};
+    use openssl::{base64, error, sha::sha256, string};
     use polling::{Event, Events, Poller};
     use regex::Regex;
     use std::sync::mpsc::channel;
     use threadpool::ThreadPool;
 
-    use crate::{pipeline_module::pipeline, read_request, write_response, Entry, IOError, Pipeline};
+    use crate::{
+        pipeline_module::pipeline, read_request, write_response, Entry, IOError, Pipeline,
+    };
 
     const CLIENT_TOKEN_HEADER: &str = "client_token";
 
@@ -110,7 +112,8 @@ pub mod http_entry_nonblocking {
                                 pipeline_mutex,
                                 salt,
                                 connectiond_mutex,
-                            ).unwrap();
+                            )
+                            .unwrap();
                         });
 
                         self.poller
@@ -207,7 +210,6 @@ pub mod http_entry_nonblocking {
                 .body(data)
                 .unwrap();
 
-
             write_response(connection, response)?;
             Ok(())
         }
@@ -233,12 +235,11 @@ pub mod http_entry_nonblocking {
             let request = read_request(&mut connection)?;
 
             if !request.headers().contains_key(CLIENT_TOKEN_HEADER) {
-
                 println!("new req {}", address.to_string());
                 for (key, value) in request.headers() {
                     println!("{}:{}", key, value.to_str().unwrap());
                 }
-                println!("+++++++++++++++++++++++++++++++++");    
+                println!("+++++++++++++++++++++++++++++++++");
 
                 let token = HttpEntryNonblocking::generate_token(address.ip(), &salt);
                 let mut connections = connections.as_ref().lock().unwrap();
@@ -267,13 +268,50 @@ pub mod http_entry_nonblocking {
                     Some(&http::Method::GET) => {
                         if connections.contains_key(token) {
                             let mut pipeline = connections.get_mut(token).unwrap();
-                            let d = request.body().to_vec();
-                            pipeline.1.write(request.body().to_vec()).unwrap();
+                            let data = request.body().to_vec();
+                            if data.len() > 0 {
+                                if let Err(e) = pipeline.1.write(data) {
+                                    match e {
+                                        IOError::InvalidConnection
+                                        | IOError::InvalidBindAddress
+                                        | IOError::UnknownError(_)
+                                        | IOError::IoError(_)
+                                        | IOError::ParseError
+                                        | IOError::InvalidStep(_)
+                                        | IOError::InvalidData(_)
+                                        | IOError::Error(_) => return Err(e),
+                                        IOError::EmptyData => {
+                                            return HttpEntryNonblocking::write_response(
+                                                connection,
+                                                vec![0u8; 0],
+                                            );
+                                        }
+                                    }
+                                }
+                            }
                             pipeline.2 = SystemTime::now();
 
-                            let data = pipeline.1.read().unwrap();
-
-                            return HttpEntryNonblocking::write_response(connection, data);
+                            match pipeline.1.read() {
+                                Ok(data) => {
+                                    return HttpEntryNonblocking::write_response(connection, data);
+                                }
+                                Err(e) => match e {
+                                    IOError::InvalidConnection
+                                    | IOError::InvalidBindAddress
+                                    | IOError::UnknownError(_)
+                                    | IOError::IoError(_)
+                                    | IOError::ParseError
+                                    | IOError::InvalidStep(_)
+                                    | IOError::InvalidData(_)
+                                    | IOError::Error(_) => return Err(e),
+                                    IOError::EmptyData => {
+                                        return HttpEntryNonblocking::write_response(
+                                            connection,
+                                            vec![0u8; 0],
+                                        );
+                                    }
+                                },
+                            }
                         } else {
                             return HttpEntryNonblocking::write_invalid_access(connection);
                         }

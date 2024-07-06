@@ -1,7 +1,7 @@
 pub mod io_step {
     use crate::{
         pipeline_module::pipeline::{IOError, PipelineDirection, PipelineStep},
-        BoxedClone, EmptyRead,
+        BoxedClone,
     };
     use std::io::{stdin, stdout, Write, Read};
 
@@ -47,7 +47,7 @@ pub mod io_step {
                     let errno = std::io::Error::last_os_error();
                     Err(IOError::IoError(errno))
                 } else if available == 0 {
-                    Ok(EmptyRead)
+                    Err(IOError::EmptyData)
                 } else {
                     let mut result = vec![0u8; available];
                     io.read(result.as_mut_slice());

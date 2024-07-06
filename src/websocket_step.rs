@@ -16,7 +16,7 @@ pub mod ws_destination {
 
     use crate::pipeline_module::pipeline::{IOError, PipelineDirection, PipelineStep};
     use crate::{
-        get_available_bytes, http_tools, read_response, write_request, BoxedClone, EmptyRead,
+        get_available_bytes, http_tools, read_response, write_request, BoxedClone,
         WssDestination,
     };
 
@@ -97,7 +97,7 @@ pub mod ws_destination {
                 let errno = std::io::Error::last_os_error();
                 Err(IOError::IoError(errno))
             } else if available == 0 {
-                Ok(EmptyRead)
+                Err(IOError::EmptyData)
             } else {
                 let mut byteData = BytesMut::new();
                 byteData.resize(available, 0);
@@ -119,7 +119,7 @@ pub mod ws_destination {
                                 return Err(IOError::IoError(e));
                             }
                             websocket_codec::Opcode::Ping | websocket_codec::Opcode::Pong => {
-                                Ok(EmptyRead)
+                                Err(IOError::EmptyData)
                             }
                         },
                         None => {
@@ -172,7 +172,7 @@ pub mod ws_destination {
             }
         }
 
-        fn handshake(mut stream: &mut TcpStream, address: String) -> std::io::Result<()> {
+        fn handshake(mut stream: &mut TcpStream, address: String) -> Result<(), IOError> {
             //send request
             let mut rand_buf = [0u8; 16];
             openssl::rand::rand_bytes(&mut rand_buf).unwrap();
@@ -194,9 +194,7 @@ pub mod ws_destination {
                 .unwrap();
 
             write_request(&mut stream, &request)?;
-
-            // std::thread::sleep(Duration::from_millis(50));
-
+            
             let res = read_response(stream)?;
 
             if res.status() != StatusCode::from_u16(101).unwrap() {
@@ -204,8 +202,8 @@ pub mod ws_destination {
                     "response: {}",
                     std::str::from_utf8(res.body()).unwrap_or("")
                 );
-                let e = io::Error::new(io::ErrorKind::NotFound, "");
-                return Err(e);
+                let msg : String = std::str::from_utf8(res.body()).unwrap_or("").to_string();
+                return Err(IOError::InvalidData(msg));
             }
 
             Ok(())
@@ -229,7 +227,7 @@ pub mod wss_destination {
     use tungstenite::protocol::{Role, WebSocketContext};
     use tungstenite::{client, Message, WebSocket};
 
-    use crate::{BoxedClone, EmptyRead, IOError, PipelineStep};
+    use crate::{BoxedClone, IOError, PipelineStep};
 
     pub struct WssDestination {
         tcp_stream: TcpStream,
@@ -336,7 +334,7 @@ pub mod wss_destination {
                 let errno = std::io::Error::last_os_error();
                 Err(IOError::IoError(errno))
             } else if available == 0 {
-                Ok(EmptyRead)
+                Err(IOError::EmptyData)
             } else {
                 let m = &mut self.get_websocket().read().unwrap();
                 // let mut m = &mut self
@@ -351,7 +349,7 @@ pub mod wss_destination {
                         Err(IOError::IoError(errno))
                     }
                     Message::Ping(_) | Message::Pong(_) | Message::Frame(_) => {
-                        Ok(EmptyRead)
+                        Err(IOError::EmptyData)
                     }
                 }
                 // self.tcp_stream.read(buf)

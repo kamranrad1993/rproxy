@@ -1,6 +1,6 @@
 pub mod websocket_entry_nonblocking {
     use crate::http_tools::http_tools;
-    use crate::{get_available_bytes, read_request, write_response, Entry, Pipeline};
+    use crate::{get_available_bytes, read_request, write_response, Entry, IOError, Pipeline};
     use bytes::{self, BytesMut};
     use http::{response, Request, Response, Version};
     use openssl::sha::Sha1;
@@ -185,11 +185,11 @@ pub mod websocket_entry_nonblocking {
             Ok(())
         }
 
-        fn handle_connection(&mut self, client_key: usize) {
+        fn handle_connection(&mut self, client_key: usize) -> Result<(), IOError> {
             self.pipeline.start();
 
             let client = self.connections.get_mut(&client_key).unwrap();
-            client.0.set_nonblocking(true).unwrap();
+            client.0.set_nonblocking(true)?;
 
             println!(
                 "new client connected, key : {}, address : {} ",
@@ -197,7 +197,7 @@ pub mod websocket_entry_nonblocking {
             );
 
             unsafe {
-                self.poller.add(&client.0, Event::all(client_key)).unwrap();
+                self.poller.add(&client.0, Event::all(client_key))?;
             }
             let mut events = Events::new();
 
@@ -206,14 +206,13 @@ pub mod websocket_entry_nonblocking {
 
             loop {
                 thread::sleep(Duration::from_millis(10));
-                self.poller.wait(&mut events, None).unwrap();
+                self.poller.wait(&mut events, None)?;
 
                 for ev in events.iter() {
                     if ev.key == client_key {
                         if ev.readable {
                             if !handshaked {
-                                if let Err(e) =
-                                    WSEntryNonBlocking::handshake(client.0.try_clone().unwrap())
+                                if let Err(e) = WSEntryNonBlocking::handshake(client.0.try_clone()?)
                                 {
                                     is_connected = false;
                                     break;
@@ -240,11 +239,25 @@ pub mod websocket_entry_nonblocking {
                                             Ok(msgc) => match msgc {
                                                 Some(msg) => match msg.opcode() {
                                                     websocket_codec::Opcode::Text
-                                                    | websocket_codec::Opcode::Binary => {
-                                                        self.pipeline
-                                                            .write(msg.data().to_vec())
-                                                            .unwrap();
-                                                    }
+                                                    | websocket_codec::Opcode::Binary => match self
+                                                        .pipeline
+                                                        .write(msg.data().to_vec())
+                                                    {
+                                                        Ok(size) => {}
+                                                        Err(e) => match e {
+                                                            IOError::InvalidConnection
+                                                            | IOError::InvalidBindAddress
+                                                            | IOError::UnknownError(_)
+                                                            | IOError::IoError(_)
+                                                            | IOError::ParseError
+                                                            | IOError::InvalidStep(_)
+                                                            | IOError::InvalidData(_)
+                                                            | IOError::Error(_) => {
+                                                                return Err(e);
+                                                            }
+                                                            IOError::EmptyData => {}
+                                                        },
+                                                    },
                                                     websocket_codec::Opcode::Close => {
                                                         is_connected = false;
                                                         break;
@@ -288,7 +301,7 @@ pub mod websocket_entry_nonblocking {
                                         if !data.is_empty() {
                                             let msg = Message::binary(data);
                                             let mut buf: BytesMut = BytesMut::new();
-                                            MessageCodec::server().encode(&msg, &mut buf).unwrap();
+                                            MessageCodec::server().encode(&msg, &mut buf)?;
 
                                             if let Err(e) = client.0.write(buf.to_vec().as_slice())
                                             {
@@ -303,11 +316,20 @@ pub mod websocket_entry_nonblocking {
                                             }
                                         }
                                     }
-                                    Err(e) => {
-                                        println!("Error reading from pipeline");
-                                        is_connected = false;
-                                        break;
-                                    }
+                                    Err(e) => match e {
+                                        IOError::InvalidConnection
+                                        | IOError::InvalidBindAddress
+                                        | IOError::UnknownError(_)
+                                        | IOError::IoError(_)
+                                        | IOError::ParseError
+                                        | IOError::InvalidStep(_)
+                                        | IOError::InvalidData(_)
+                                        | IOError::Error(_) => {
+                                            client.0.shutdown(Shutdown::Both)?;
+                                            return Err(e);
+                                        }
+                                        IOError::EmptyData => {}
+                                    },
                                 }
                             }
                         } else {
@@ -321,16 +343,15 @@ pub mod websocket_entry_nonblocking {
                     break;
                 }
 
-                self.poller
-                    .modify(&client.0, Event::all(client_key))
-                    .unwrap();
+                self.poller.modify(&client.0, Event::all(client_key))?;
             }
 
-            client.0.shutdown(Shutdown::Both).unwrap();
             println!(
                 "client disconnected, key : {}, address : {} ",
                 client_key, client.1
             );
+            client.0.shutdown(Shutdown::Both)?;
+            Ok(())
         }
     }
 }

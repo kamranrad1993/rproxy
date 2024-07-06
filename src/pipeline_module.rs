@@ -8,9 +8,9 @@ pub mod pipeline {
         string::ParseError,
     };
 
-    pub const EmptyRead : Vec<u8> = Vec::<u8>::new();
+    use strum::Display;
 
-    #[derive(Debug)]
+    #[derive(Debug, Display)]
     pub enum IOError {
         InvalidConnection,
         InvalidBindAddress,
@@ -19,11 +19,19 @@ pub mod pipeline {
         ParseError,
         InvalidStep(String),
         InvalidData(String),
+        EmptyData,
+        Error(Box<dyn std::error::Error + Send + Sync>)
     }
 
     impl From<std::io::Error>  for IOError{
         fn from(value: std::io::Error) -> Self {
             IOError::IoError(value)
+        }
+    }
+
+    impl From<Box<dyn std::error::Error + Send + Sync>> for IOError {
+        fn from(value: Box<dyn std::error::Error + Send + Sync>) -> Self {
+            IOError::Error(value)
         }
     }
 

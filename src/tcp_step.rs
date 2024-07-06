@@ -10,7 +10,7 @@ pub mod tcp_step {
     use tungstenite::{client, Message, WebSocket};
 
     use crate::pipeline_module::pipeline::{IOError, PipelineDirection, PipelineStep};
-    use crate::{BoxedClone, EmptyRead};
+    use crate::{BoxedClone,};
 
     pub struct TCPStep {
         tcp_stream: Option<TcpStream>,
@@ -75,7 +75,7 @@ pub mod tcp_step {
                 let errno = std::io::Error::last_os_error();
                 Err(IOError::IoError(errno))
             } else if available == 0 {
-                Ok(EmptyRead)
+                Err(IOError::EmptyData)
             } else {
                 let mut result = vec![0u8; available];
                 self.get_stream().read(result.as_mut_slice());

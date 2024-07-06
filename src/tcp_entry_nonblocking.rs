@@ -1,5 +1,5 @@
 pub mod tcp_entry_nonblocking {
-    use crate::{Entry, Pipeline};
+    use crate::{Entry, IOError, Pipeline};
     use http::Uri;
     use polling::{Event, Events, Poller};
     use regex::Regex;
@@ -78,7 +78,22 @@ pub mod tcp_entry_nonblocking {
                         let mut cloned_self = self.clone();
 
                         thread::spawn(move || {
-                            cloned_self.handle_connection(client_key).unwrap();
+                            if let Err(e) = cloned_self.handle_connection(client_key) {
+                                match e {
+                                    IOError::InvalidConnection
+                                    | IOError::InvalidBindAddress
+                                    | IOError::UnknownError(_)
+                                    | IOError::IoError(_)
+                                    | IOError::ParseError
+                                    | IOError::InvalidStep(_)
+                                    | IOError::InvalidData(_)
+                                    | IOError::Error(_) => {
+                                        println!("{}", e);
+                                        return;
+                                    }
+                                    IOError::EmptyData => {}
+                                }
+                            }
                         });
 
                         self.poller
@@ -108,13 +123,16 @@ pub mod tcp_entry_nonblocking {
     }
 
     impl TcpEntryNonBlocking {
-        fn handle_connection(&mut self, client_key: usize) -> io::Result<()> {
+        fn handle_connection(&mut self, client_key: usize) -> Result<(), IOError> {
             self.pipeline.start();
 
             let client = self.connections.get_mut(&client_key).unwrap();
-            client.0.set_nonblocking(true).unwrap();
+            client.0.set_nonblocking(true)?;
 
-            println!("new client connected, key : {}, address : {} ", client_key, client.1);
+            println!(
+                "new client connected, key : {}, address : {} ",
+                client_key, client.1
+            );
 
             unsafe {
                 self.poller.add(&client.0, Event::all(client_key))?;
@@ -124,7 +142,7 @@ pub mod tcp_entry_nonblocking {
 
             loop {
                 thread::sleep(Duration::from_millis(10));
-                self.poller.wait(&mut events, None).unwrap();
+                self.poller.wait(&mut events, None)?;
 
                 for ev in events.iter() {
                     if ev.key == client_key {
@@ -136,7 +154,22 @@ pub mod tcp_entry_nonblocking {
                                         match client.0.read_exact(&mut buf) {
                                             Ok(_) => {
                                                 let len = buf.len();
-                                                let final_size = self.pipeline.write(buf).unwrap();
+                                                match self.pipeline.write(buf) {
+                                                    Ok(size) => {}
+                                                    Err(e) => match e {
+                                                        IOError::InvalidConnection
+                                                        | IOError::InvalidBindAddress
+                                                        | IOError::UnknownError(_)
+                                                        | IOError::IoError(_)
+                                                        | IOError::ParseError
+                                                        | IOError::InvalidStep(_)
+                                                        | IOError::InvalidData(_)
+                                                        | IOError::Error(_) => {
+                                                            return Err(e);
+                                                        }
+                                                        IOError::EmptyData => {}
+                                                    },
+                                                }
                                             }
                                             Err(e) => {
                                                 println!("Error reading from stream: {}", e);
@@ -160,19 +193,35 @@ pub mod tcp_entry_nonblocking {
 
                         if ev.writable {
                             if self.pipeline.read_available() {
-                                let data = self.pipeline.read().unwrap();
-                                if !data.is_empty() {
-                                    if let Err(e) = client.0.write(&data) {
-                                        println!("Error writing to stream: {}", e);
-                                        is_connected = false;
-                                        break;
-                                    }
+                                match self.pipeline.read() {
+                                    Ok(data) => {
+                                        if !data.is_empty() {
+                                            if let Err(e) = client.0.write(&data) {
+                                                println!("Error writing to stream: {}", e);
+                                                is_connected = false;
+                                                break;
+                                            }
 
-                                    if let Err(e) = client.0.flush() {
-                                        println!("Error flush stream: {}", e);
-                                        is_connected = false;
-                                        break;
+                                            if let Err(e) = client.0.flush() {
+                                                println!("Error flush stream: {}", e);
+                                                is_connected = false;
+                                                break;
+                                            }
+                                        }
                                     }
+                                    Err(e) => match e {
+                                        IOError::InvalidConnection
+                                        | IOError::InvalidBindAddress
+                                        | IOError::UnknownError(_)
+                                        | IOError::IoError(_)
+                                        | IOError::ParseError
+                                        | IOError::InvalidStep(_)
+                                        | IOError::InvalidData(_)
+                                        | IOError::Error(_) => {
+                                            return Err(e);
+                                        }
+                                        IOError::EmptyData => {}
+                                    },
                                 }
                             }
                         } else {
@@ -186,12 +235,13 @@ pub mod tcp_entry_nonblocking {
                     break;
                 }
 
-                self.poller
-                    .modify(&client.0, Event::all(client_key))
-                    .unwrap();
+                self.poller.modify(&client.0, Event::all(client_key))?;
             }
-            client.0.shutdown(Shutdown::Both).unwrap();
-            println!("client disconnected, key : {}, address : {} ", client_key, client.1);
+            client.0.shutdown(Shutdown::Both)?;
+            println!(
+                "client disconnected, key : {}, address : {} ",
+                client_key, client.1
+            );
             Ok(())
         }
     }

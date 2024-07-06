@@ -122,7 +122,7 @@ pub mod http_step {
             HttpStep {
                 token: None,
                 address: String::from_str(address).unwrap(),
-                buffer: vec![0u8, 0],
+                buffer: vec![0u8; 0],
             }
         }
 
