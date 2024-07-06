@@ -25,7 +25,7 @@ pub mod http_tools {
         write!(buffer, "HTTP/1.1 {}\r\n", response.status(),)?;
 
         for (key, value) in response.headers() {
-            // println!("{}{}", key, value.to_str().unwrap());
+            println!("{}{}", key, value.to_str().unwrap());
             write!(buffer, "{}: {}\r\n", key, value.to_str().unwrap())?;
         }
 
@@ -238,7 +238,7 @@ pub mod http_tools {
 
         for (chunk_index, index) in sequence[1..].iter().enumerate() {
             let (header, header_val) = parse_header(&buffer[index.0..index.1]).unwrap();
-            // println!("{}, {}", header, header_val);
+            println!("{}, {}", header, header_val);
             builder = builder.header(header, header_val);
         }
 

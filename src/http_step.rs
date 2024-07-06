@@ -5,6 +5,8 @@ pub mod http_step {
     use std::net::TcpStream;
     use std::os::fd::AsRawFd;
     use std::str::FromStr;
+    use std::thread;
+    use std::time::Duration;
     use tungstenite::http::{Request, Uri};
     use tungstenite::protocol::{Role, WebSocketContext};
     use tungstenite::{client, Message, WebSocket};
@@ -26,6 +28,7 @@ pub mod http_step {
             if self.buffer.len() != 0 {
                 Ok(self.buffer.len())
             } else {
+                thread::sleep(Duration::from_millis(100));
                 let mut request = Request::builder()
                     .method(http::Method::HEAD)
                     .version(Version::HTTP_11)
